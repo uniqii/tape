@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>TP-7 Absolute Tape Core</title>
+    <title>TP-7 Linear Tape Core</title>
     <style>
         body {
             background-color: #161616;
@@ -104,7 +104,7 @@
             top: 15px;
         }
 
-        /* Odometer Rolling Digital Screen UI */
+        /* Fixed Odometer - Linear Roll Engine */
         .odometer-container {
             background-color: #000;
             border: 2px solid #333;
@@ -133,7 +133,8 @@
             left: 0;
             display: flex;
             flex-direction: column;
-            transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+            /* Changed to strict linear animation */
+            transition: transform 0.1s linear;
         }
         .digit-strip span {
             display: block;
@@ -256,7 +257,7 @@
             currentSourceNode.loop = true;
             currentSourceNode.connect(audioContext.destination);
             
-            // Absolute boundary control loop logic
+            // Lock boundary protection
             if (trackPlayheadTime < 0) trackPlayheadTime = 0;
             if (trackPlayheadTime > audioBuffer.duration) trackPlayheadTime = 0;
 
@@ -267,7 +268,6 @@
             currentSourceNode.playbackRate.setValueAtTime(currentPlaybackRate, audioContext.currentTime);
         }
 
-        // Processing & Rolling Watch Layout Logic
         function animationLoop(now) {
             const deltaTime = (now - lastAnimationFrameTime) / 1000;
             lastAnimationFrameTime = now;
@@ -279,7 +279,7 @@
                         currentSourceNode.playbackRate.setValueAtTime(currentPlaybackRate, audioContext.currentTime);
                     }
 
-                    // CRITICAL: Prevent automatic wheel movement completely during Free Spin mode
+                    // Keep motor dead if in Free Spin mode
                     if (!isFreeSpinMode) {
                         const baseSpinSpeed = 2.5; 
                         wheelRotation += baseSpinSpeed * currentPlaybackRate * deltaTime;
@@ -288,11 +288,11 @@
 
                     const elapsedContextTime = audioContext.currentTime - nodeStartTimeContext;
                     trackPlayheadTime = nodeStartTimePlayhead + (elapsedContextTime * currentPlaybackRate);
-                } else {
-                    // Manual scrubbing calculations directly increment/decrement playhead
-                    if (trackPlayheadTime < 0) trackPlayheadTime = audioBuffer.duration;
-                    if (trackPlayheadTime > audioBuffer.duration) trackPlayheadTime = 0;
                 }
+
+                // FIXED: Hard clamp prevents wrapping behind zero
+                if (trackPlayheadTime < 0) trackPlayheadTime = 0;
+                if (trackPlayheadTime > audioBuffer.duration) trackPlayheadTime = 0;
 
                 updateOdometerDisplay(trackPlayheadTime);
             }
@@ -301,7 +301,6 @@
         }
         requestAnimationFrame(animationLoop);
 
-        // Analog Odometer Mechanical Wheel Roller System
         function scrollDigitSlot(elementId, targetValue) {
             const strip = document.getElementById(elementId);
             if (strip) {
@@ -351,21 +350,20 @@
 
         btnRW.addEventListener('click', () => {
             if (!isPlaying) return;
-            targetPlaybackRate = 0.5; // Fixed slowdown mode requested
+            targetPlaybackRate = 0.5; 
             status.innerText = "SYS: Custom Slowdown Track (0.5x)";
         });
 
-        // Toggle Free Spin System Configuration
+        // Toggle Free Spin Mode Configuration
         btnFree.addEventListener('click', () => {
             if (!isPlaying) return;
             isFreeSpinMode = !isFreeSpinMode;
             
             if (isFreeSpinMode) {
                 btnFree.classList.add('active');
-                targetPlaybackRate = 0; // Instantly tells the audio process to halt auto-drive
-                currentPlaybackRate = 0;
-                if (currentSourceNode) currentSourceNode.playbackRate.setValueAtTime(0, audioContext.currentTime);
-                status.innerText = "MODE: Free Spin. Wheel dead. Dial speed manually.";
+                // FIXED: The audio engine keeps running at the current rate! The motor simply detaches.
+                manualSpeedSetting = currentPlaybackRate;
+                status.innerText = "MODE: Free Spin Active. Music playing, wheel detached. Tweak speed manually.";
             } else {
                 btnFree.classList.remove('active');
                 targetPlaybackRate = manualSpeedSetting; 
@@ -402,14 +400,13 @@
             if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
             if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-            // Hand directly maps physical wheel rotation placement
             wheelRotation += angleDiff;
             wheel.style.transform = `rotate(${wheelRotation}rad)`;
 
             const angularVelocity = angleDiff / deltaTime;
 
             if (isFreeSpinMode) {
-                // Clockwise speeds up toward 2.0. Counter-clockwise slows down to 0.0 limit.
+                // Bounds strictly kept between 0.0 (Stopped) and 2.0 (Max Forward)
                 manualSpeedSetting += (angularVelocity * 0.02);
                 manualSpeedSetting = Math.max(0.0, Math.min(2.0, manualSpeedSetting));
                 
@@ -419,9 +416,10 @@
                 }
                 status.innerText = `DIALING SYSTEM VELOCITY: ${currentPlaybackRate.toFixed(2)}x`;
             } else {
-                // Regular Touch Scratching Altering Timeline Position Directly
+                // Scrubbing Timeline Engine with Zero Boundaries Fixed
                 const rotationFactor = 5.0; 
                 trackPlayheadTime += angleDiff * rotationFactor;
+                if (trackPlayheadTime < 0) trackPlayheadTime = 0; // Boundary limit lock
                 status.innerText = `SCRUBBING PLAYHEAD LOCATION`;
             }
 
@@ -433,7 +431,6 @@
             if (!isInteracting) return;
             isInteracting = false; 
             
-            // When letting go of standard scratch, instantly force playhead update
             if (!isFreeSpinMode && isPlaying) {
                 currentPlaybackRate = targetPlaybackRate;
                 updateAudioEngineNode();
