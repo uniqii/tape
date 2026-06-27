@@ -1,1129 +1,686 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>TP-7 TAPE EMULATOR</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#161616;--bg2:#1e1e1e;--bg3:#242424;
-  --accent:#ff5500;--cyan:#00ffcc;--cyan-d:#00aa88;
-  --gray:#3a3a3a;--gray2:#555;--text:#aaaaaa;
-  --mono:'Share Tech Mono',monospace;--ui:'Rajdhani',sans-serif;
-}
-html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:var(--ui);overflow-x:hidden;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
-
-/* ─── LAYOUT ─── */
-#app{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:10px 8px 20px;gap:8px}
-#topbar{width:100%;max-width:920px;display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--gray)}
-#brand{font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--accent);text-transform:uppercase}
-#layout-toggle{font-family:var(--mono);font-size:9px;letter-spacing:2px;background:var(--bg3);border:1px solid var(--gray);color:var(--cyan);padding:5px 12px;cursor:pointer;text-transform:uppercase;transition:border-color .2s,background .2s}
-#layout-toggle:hover{border-color:var(--cyan);background:#1a2a28}
-#main-container{width:100%;max-width:920px;display:flex;gap:14px;align-items:flex-start;transition:all .3s}
-#main-container.pc{flex-direction:row}
-#main-container.mob{flex-direction:column;align-items:center}
-.panel{background:var(--bg2);border:1px solid var(--gray);padding:14px}
-#left-panel{flex:0 0 300px;display:flex;flex-direction:column;align-items:center;gap:12px}
-#main-container.mob #left-panel{width:100%;max-width:340px;flex:unset}
-#right-panel{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
-#main-container.mob #right-panel{width:100%;max-width:340px;flex:unset}
-.slabel{font-family:var(--mono);font-size:8px;letter-spacing:3px;color:var(--gray2);text-transform:uppercase;margin-bottom:8px}
-
-/* ─── ODOMETER ─── */
-#clock-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:12px;display:flex;flex-direction:column;align-items:center;position:relative}
-#clock-panel::after{content:'';position:absolute;left:0;right:0;bottom:0;height:14px;background:linear-gradient(transparent,#090909);pointer-events:none;z-index:3}
-#clock-panel::before{content:'';position:absolute;left:0;right:0;top:0;height:14px;background:linear-gradient(#090909,transparent);pointer-events:none;z-index:3}
-#odometer{display:flex;align-items:center;gap:2px;height:44px;overflow:hidden;position:relative;z-index:1}
-.odo-wrap{width:26px;height:44px;overflow:hidden;background:#050505;border:1px solid #1a1a1a;position:relative}
-.odo-strip{display:flex;flex-direction:column;position:absolute;top:0;left:0;width:100%;will-change:transform}
-.odo-cell{height:44px;line-height:44px;text-align:center;font-family:var(--mono);font-size:26px;color:var(--cyan);text-shadow:0 0 10px var(--cyan),0 0 22px #00ffcc55}
-.odo-sep{font-family:var(--mono);font-size:20px;color:var(--cyan);text-shadow:0 0 8px var(--cyan);line-height:44px;padding:0 1px;opacity:.6}
-
-/* ─── WHEEL ─── */
-#wheel-panel{width:100%;display:flex;flex-direction:column;align-items:center;gap:8px}
-#wheel-outer{position:relative;width:230px;height:230px;touch-action:none;cursor:grab}
-#wheel-outer:active{cursor:grabbing}
-#wheel-svg{width:100%;height:100%;display:block;transition:filter .15s}
-#wheel-outer.active #wheel-svg{filter:drop-shadow(0 0 14px #ff550088)}
-#wheel-status{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--gray2);text-transform:uppercase}
-
-/* ─── SPEED ─── */
-#spd-wrap{width:100%;padding:0 2px}
-#spd-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--gray2)}
-#spd-track{width:100%;height:4px;background:var(--gray);margin:4px 0;position:relative;overflow:hidden}
-#spd-fill{height:100%;background:var(--accent);width:50%;transition:width .06s linear}
-#spd-val{font-family:var(--mono);font-size:11px;color:var(--cyan);text-shadow:0 0 6px var(--cyan);text-align:right}
-
-/* ─── UPLOAD ─── */
-#upload-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:10px}
-#drop-zone{border:1px dashed var(--gray2);padding:14px 10px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
-#drop-zone:hover,#drop-zone.over{border-color:var(--accent);background:#190d00}
-#dzt{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--gray2);text-transform:uppercase}
-#drop-zone.loaded #dzt{color:var(--cyan)}
-#tname{font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:14px;margin-top:5px}
-#file-input{display:none}
-
-/* ─── WAVEFORM ─── */
-#wave-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:8px}
-#wave-canvas{width:100%;height:54px;display:block;cursor:pointer}
-
-/* ─── CONTROLS ─── */
-#ctrl-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:12px}
-#btn-grid{display:flex;flex-wrap:wrap;gap:8px}
-#main-container.mob #btn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.cbtn{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;background:var(--bg3);border:1px solid var(--gray);color:var(--text);padding:10px 8px;cursor:pointer;transition:all .12s;flex:1 1 55px;min-width:55px;text-align:center}
-.cbtn:hover{border-color:var(--gray2);color:#ddd}
-.cbtn:active{background:var(--gray);transform:scale(.97)}
-.cbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 14px #ff550055}
-.cbtn.lit{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 8px #00ffcc33}
-
-/* ─── STEREO ANALYZER ─── */
-#analyzer-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
-#analyzer-row{display:flex;gap:8px;align-items:stretch;height:96px}
-
-/* Channel wrapper: label + canvas stacked */
-.ch-wrap{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
-.ch-label-row{display:flex;align-items:center;justify-content:space-between}
-.ch-lbl{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--gray2);text-transform:uppercase}
-.ch-peak{font-family:var(--mono);font-size:8px;color:var(--cyan);text-shadow:0 0 6px var(--cyan);letter-spacing:1px;min-width:36px;text-align:right}
-.ch-canvas{width:100%;flex:1;display:block;image-rendering:pixelated}
-
-/* Center divider with dB scale */
-#analyzer-scale{
-  display:flex;flex-direction:column;justify-content:space-between;
-  padding:16px 0 2px;width:28px;flex-shrink:0;
-}
-.db-tick{font-family:var(--mono);font-size:7px;color:#333;text-align:center;letter-spacing:0}
-
-/* Correlation meter strip below */
-#corr-row{display:flex;align-items:center;gap:6px;margin-top:2px}
-#corr-lbl{font-family:var(--mono);font-size:7px;color:var(--gray2);letter-spacing:1px;white-space:nowrap}
-#corr-track{flex:1;height:3px;background:var(--gray);position:relative;overflow:hidden}
-#corr-fill{position:absolute;top:0;height:100%;background:var(--cyan);transition:left .05s linear,width .05s linear}
-#corr-val{font-family:var(--mono);font-size:7px;color:var(--gray2);width:28px;text-align:right}
-
-/* ─── STATUSBAR ─── */
-#statusbar{width:100%;max-width:920px;display:flex;align-items:center;justify-content:space-between;padding:4px 10px;border-top:1px solid var(--gray)}
-#smsg{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--gray2);text-transform:uppercase}
-#smode{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--accent);text-transform:uppercase}
-
-@media(max-width:640px){
-  #main-container.pc{flex-direction:column;align-items:center}
-  #main-container.pc #left-panel,#main-container.pc #right-panel{width:100%;max-width:340px;flex:unset}
-  #main-container.pc #btn-grid{display:grid;grid-template-columns:repeat(3,1fr)}
-}
-</style>
-</head>
-<body>
-<div id="app">
-
-<div id="topbar">
-  <div id="brand">TP-7 // TAPE EMULATOR</div>
-  <button id="layout-toggle">◫ PC UI</button>
-</div>
-
-<div id="main-container" class="pc">
-
-  <!-- LEFT: WHEEL + CLOCK -->
-  <div id="left-panel" class="panel">
-
-    <div id="clock-panel">
-      <div class="slabel">TAPE POSITION</div>
-      <div id="odometer"></div>
-    </div>
-
-    <div id="wheel-panel">
-      <div class="slabel">DRIVE WHEEL</div>
-      <div id="wheel-outer">
-        <svg id="wheel-svg" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
-          <!-- Outer tread ring -->
-          <circle cx="120" cy="120" r="116" fill="none" stroke="#1c1c1c" stroke-width="14"/>
-          <circle cx="120" cy="120" r="116" fill="none" stroke="#2a2a2a" stroke-width="1"/>
-          <!-- Grip dots -->
-          <g id="grip-g"></g>
-          <!-- Main disc -->
-          <circle cx="120" cy="120" r="108" fill="#161616" stroke="#2e2e2e" stroke-width="1"/>
-          <!-- Concentric detail rings -->
-          <circle cx="120" cy="120" r="90"  fill="none" stroke="#1e1e1e" stroke-width="1"/>
-          <circle cx="120" cy="120" r="72"  fill="none" stroke="#222"    stroke-width="1"/>
-          <!-- Spokes -->
-          <g id="spoke-g" stroke="#282828" stroke-width="2.5" stroke-linecap="round"></g>
-          <!-- Orange accent tick ring -->
-          <circle cx="120" cy="120" r="54"  fill="none" stroke="#ff550018" stroke-width="2"/>
-          <!-- Hub -->
-          <circle cx="120" cy="120" r="38"  fill="#0e0e0e" stroke="#2a2a2a" stroke-width="1.5"/>
-          <circle cx="120" cy="120" r="30"  fill="none"   stroke="#1e1e1e" stroke-width="1"/>
-          <!-- Speed ticks -->
-          <g id="tick-g" stroke="#222" stroke-width="1"></g>
-          <!-- Center -->
-          <circle cx="120" cy="120" r="11"  fill="#0a0a0a" stroke="var(--accent)" stroke-width="1.5"/>
-          <circle cx="120" cy="120" r="4.5" fill="var(--accent)"/>
-          <!-- Rotation marker -->
-          <rect id="rot-mark" x="117" y="82" width="6" height="14" rx="3" fill="var(--accent)"/>
-        </svg>
-      </div>
-      <div id="wheel-status">MOTOR STOPPED</div>
-    </div>
-
-    <div id="spd-wrap">
-      <div id="spd-labels"><span>0.0×</span><span>SPEED</span><span>2.0×</span></div>
-      <div id="spd-track"><div id="spd-fill"></div></div>
-      <div id="spd-val">1.00×</div>
-    </div>
-
-  </div>
-
-  <!-- RIGHT: FILE + WAVE + CTRL + VU -->
-  <div id="right-panel">
-
-    <div id="upload-panel" class="panel">
-      <div class="slabel">MEDIA SOURCE</div>
-      <div id="drop-zone">
-        <div id="dzt">DROP AUDIO · OR TAP TO BROWSE</div>
-      </div>
-      <div id="tname">NO TAPE LOADED</div>
-      <input type="file" id="file-input" accept="audio/*">
-    </div>
-
-    <div id="wave-panel" class="panel">
-      <div class="slabel">WAVEFORM</div>
-      <canvas id="wave-canvas" width="600" height="54"></canvas>
-    </div>
-
-    <div id="ctrl-panel" class="panel">
-      <div class="slabel">TRANSPORT</div>
-      <div id="btn-grid">
-        <button class="cbtn" id="btn-play">▶ PLAY</button>
-        <button class="cbtn" id="btn-pause">⏸ PAUSE</button>
-        <button class="cbtn" id="btn-ffwd">⏩ FFWD</button>
-        <button class="cbtn" id="btn-rew">⏪ REW</button>
-        <button class="cbtn" id="btn-free">⊙ FREE</button>
-      </div>
-    </div>
-
-    <div id="analyzer-panel" class="panel">
-      <div class="slabel">STEREO ANALYZER</div>
-      <div id="analyzer-row">
-        <!-- LEFT channel -->
-        <div class="ch-wrap">
-          <div class="ch-label-row">
-            <span class="ch-lbl">L</span>
-            <span class="ch-peak" id="peak-l">-∞</span>
-          </div>
-          <canvas class="ch-canvas" id="canvas-l" width="256" height="80"></canvas>
-        </div>
-        <!-- dB scale ticks -->
-        <div id="analyzer-scale">
-          <div class="db-tick">0</div>
-          <div class="db-tick">-12</div>
-          <div class="db-tick">-24</div>
-          <div class="db-tick">-36</div>
-          <div class="db-tick">-48</div>
-        </div>
-        <!-- RIGHT channel -->
-        <div class="ch-wrap">
-          <div class="ch-label-row">
-            <span class="ch-peak" id="peak-r" style="text-align:left;min-width:36px">-∞</span>
-            <span class="ch-lbl">R</span>
-          </div>
-          <canvas class="ch-canvas" id="canvas-r" width="256" height="80"></canvas>
-        </div>
-      </div>
-      <!-- Stereo correlation meter -->
-      <div id="corr-row">
-        <span id="corr-lbl">CORR</span>
-        <div id="corr-track"><div id="corr-fill"></div></div>
-        <span id="corr-val">0.00</span>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<div id="statusbar">
-  <div id="smsg">STANDBY · LOAD TAPE TO BEGIN</div>
-  <div id="smode">OFFLINE</div>
-</div>
-
-</div><!-- #app -->
-
-<script>
-(function(){
-'use strict';
-
-/* ══════════════════════════════════════════════════════════
-   LAYOUT TOGGLE
-══════════════════════════════════════════════════════════ */
-const $mc  = document.getElementById('main-container');
-const $lt  = document.getElementById('layout-toggle');
-let mobView= false;
-$lt.addEventListener('click',()=>{
-  mobView=!mobView;
-  $mc.classList.toggle('pc',!mobView);
-  $mc.classList.toggle('mob',mobView);
-  $lt.textContent = mobView ? '◧ MOBILE UI' : '◫ PC UI';
-});
-
-/* ══════════════════════════════════════════════════════════
-   ODOMETER
-   - 6 digit slots: H0 H1 : M0 M1 : S0 S1
-   - strip holds 0..9 (10 cells × 44px)
-   - translateY to land on digit d = -(d * 44)px
-   - transition is strictly linear, duration varies with speed
-══════════════════════════════════════════════════════════ */
-const DIGH = 44;
-const $odo = document.getElementById('odometer');
-const strips = [];       // array of strip elements, one per digit slot
-const lastD  = [0,0,0,0,0,0];
-let   odoDur = 0.12;     // seconds; recomputed per frame
-
-(function buildOdo(){
-  // Order: slot0=H0, slot1=H1, sep, slot2=M0, slot3=M1, sep, slot4=S0, slot5=S1
-  [0,1,'s',2,3,'s',4,5].forEach(s=>{
-    if(s==='s'){
-      const sep=document.createElement('div');
-      sep.className='odo-sep'; sep.textContent=':';
-      $odo.appendChild(sep); return;
-    }
-    const wrap=document.createElement('div'); wrap.className='odo-wrap';
-    const strip=document.createElement('div'); strip.className='odo-strip';
-    for(let d=0;d<10;d++){
-      const c=document.createElement('div'); c.className='odo-cell';
-      c.textContent=d; strip.appendChild(c);
-    }
-    strip.style.transform='translateY(0px)';
-    strip.style.transition=`transform ${odoDur}s linear`;
-    wrap.appendChild(strip);
-    $odo.appendChild(wrap);
-    strips.push(strip);
-  });
-})();
-
-function odoSet(totalSec){
-  totalSec=Math.max(0,totalSec);
-  const h=Math.floor(totalSec/3600)%100;
-  const m=Math.floor((totalSec%3600)/60);
-  const s=Math.floor(totalSec%60);
-  const vals=[Math.floor(h/10),h%10, Math.floor(m/10),m%10, Math.floor(s/10),s%10];
-  const dur=odoDur.toFixed(3)+'s';
-  vals.forEach((v,i)=>{
-    const strip=strips[i];
-    strip.style.transition=`transform ${dur} linear`;
-    if(v!==lastD[i]){
-      strip.style.transform=`translateY(${-(v*DIGH)}px)`;
-      lastD[i]=v;
-    }
-  });
-}
-
-/* ══════════════════════════════════════════════════════════
-   WHEEL SVG CONSTRUCTION
-══════════════════════════════════════════════════════════ */
-(function buildWheel(){
-  // grip dots
-  const gg=document.getElementById('grip-g');
-  const n=40,r=113;
-  for(let i=0;i<n;i++){
-    const a=(i/n)*Math.PI*2, x=120+r*Math.cos(a), y=120+r*Math.sin(a);
-    const d=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    d.setAttribute('cx',x.toFixed(1)); d.setAttribute('cy',y.toFixed(1));
-    d.setAttribute('r','2.8'); d.setAttribute('fill','#252525');
-    gg.appendChild(d);
-  }
-  // spokes
-  const sg=document.getElementById('spoke-g');
-  const ns=8;
-  for(let i=0;i<ns;i++){
-    const a=(i/ns)*Math.PI*2;
-    const x2=120+96*Math.cos(a), y2=120+96*Math.sin(a);
-    const l=document.createElementNS('http://www.w3.org/2000/svg','line');
-    l.setAttribute('x1','120'); l.setAttribute('y1','120');
-    l.setAttribute('x2',x2.toFixed(1)); l.setAttribute('y2',y2.toFixed(1));
-    sg.appendChild(l);
-  }
-  // inner tick marks (mini speed indicators)
-  const tg=document.getElementById('tick-g');
-  for(let i=0;i<24;i++){
-    const a=(i/24)*Math.PI*2;
-    const r1=34,r2=i%6===0?30:32;
-    const x1=120+r1*Math.cos(a), y1=120+r1*Math.sin(a);
-    const x2=120+r2*Math.cos(a), y2=120+r2*Math.sin(a);
-    const l=document.createElementNS('http://www.w3.org/2000/svg','line');
-    l.setAttribute('x1',x1.toFixed(1)); l.setAttribute('y1',y1.toFixed(1));
-    l.setAttribute('x2',x2.toFixed(1)); l.setAttribute('y2',y2.toFixed(1));
-    l.setAttribute('stroke',i%6===0?'#333':'#1e1e1e');
-    tg.appendChild(l);
-  }
-})();
-
-/* ══════════════════════════════════════════════════════════
-   AUDIO STATE
-══════════════════════════════════════════════════════════ */
-let actx=null, abuf=null, trackDur=0;
-
-// Transport state
-let isPlaying    = false;
-let isFree       = false;   // FREE SPIN mode
-let motorSpeed   = 1.0;     // committed playback speed (positive only for motor)
-let freeSpeed    = 1.0;     // dialed speed in FREE SPIN
-let reverseMode  = false;   // true when user is manually spinning backward
-
-// Tape head position (our authoritative pointer, in seconds)
-let head = 0.0;
-
-// Forward source
-let fwdNode      = null;
-let fwdCtxStart  = 0;   // audioCtx.currentTime when fwdNode was started
-let fwdHeadStart = 0;   // head value when fwdNode was started
-let fwdRate      = 1.0;
-
-// Reverse engine
-let revRunning   = false;
-let revPos       = 0;      // current reverse head (counts down)
-let revSpd       = 1.0;
-let revNextStart = 0;      // audioCtx time for next chunk
-let revTimer     = null;
-
-// Analyser nodes (created once)
-let analL=null, analR=null, splitter=null;
-
-/* ── AudioCtx init ── */
-function initCtx(){
-  if(!actx){ actx=new(window.AudioContext||window.webkitAudioContext)(); buildAnalysers(); }
-  if(actx.state==='suspended') actx.resume();
-}
-function buildAnalysers(){
-  analL=actx.createAnalyser(); analL.fftSize=FFT_SIZE; analL.smoothingTimeConstant=0.0;
-  analR=actx.createAnalyser(); analR.fftSize=FFT_SIZE; analR.smoothingTimeConstant=0.0;
-  splitter=actx.createChannelSplitter(2);
-  const merger=actx.createChannelMerger(2);
-  splitter.connect(analL,0); splitter.connect(analR,1);
-  analL.connect(merger,0,0); analR.connect(merger,0,1);
-  merger.connect(actx.destination);
-}
-function getChain(){ return splitter; }
-
-/* ── Forward playback ── */
-function stopFwd(){
-  if(fwdNode){ try{fwdNode.stop();}catch(e){} fwdNode.disconnect(); fwdNode=null; }
-}
-
-function startFwd(fromSec, rate){
-  stopFwd(); stopRev();
-  if(!abuf||!actx||rate<=0) return;
-  const off=Math.max(0,Math.min(fromSec, trackDur-0.001));
-  const src=actx.createBufferSource();
-  src.buffer=abuf;
-  src.playbackRate.value=rate;
-  src.connect(getChain());
-  src.start(0, off);
-  fwdNode=src; fwdCtxStart=actx.currentTime; fwdHeadStart=off; fwdRate=rate;
-  reverseMode=false;
-  src.onended=()=>{
-    if(fwdNode===src){
-      fwdNode=null;
-      if(isPlaying&&!isInteracting){
-        head=trackDur; isPlaying=false;
-        setStatus('END OF TAPE'); updateBtns();
-      }
-    }
-  };
-}
-
-/* ── Reverse playback engine ──
-   Schedules consecutive reversed PCM chunks ahead of time.
-   Each chunk is a reversed slice of the audio buffer.
-   tapeHead is updated via revPos as chunks play.
-*/
-function stopRev(){
-  revRunning=false;
-  if(revTimer){ clearTimeout(revTimer); revTimer=null; }
-}
-
-function startRev(fromSec, speed){
-  stopFwd(); stopRev();
-  if(!abuf||!actx||fromSec<=0) return;
-  revRunning=true; revPos=Math.min(fromSec, trackDur); revSpd=Math.max(0.05,speed);
-  revNextStart=actx.currentTime;
-  reverseMode=true;
-  scheduleRevChunk();
-}
-
-function scheduleRevChunk(){
-  if(!revRunning||!actx||!abuf) return;
-  if(revPos<=0.001){
-    // Hard zero boundary
-    head=0; revRunning=false; isPlaying=false;
-    setStatus('START OF TAPE · ZERO LOCK'); updateBtns(); return;
-  }
-  // How many seconds ahead we want buffered
-  const AHEAD=0.25;
-  while(revNextStart < actx.currentTime + AHEAD){
-    const chunkSec=Math.min(1.0, revPos);
-    const sr=abuf.sampleRate, ch=abuf.numberOfChannels;
-    const s0=Math.floor((revPos-chunkSec)*sr);
-    const s1=Math.floor(revPos*sr);
-    const len=s1-s0;
-    if(len<2){ revPos=0; revRunning=false; head=0;
-      setStatus('START OF TAPE · ZERO LOCK'); isPlaying=false; updateBtns(); return; }
-
-    const rb=actx.createBuffer(ch,len,sr);
-    for(let c=0;c<ch;c++){
-      const inp=abuf.getChannelData(c).subarray(s0,s1);
-      const out=rb.getChannelData(c);
-      for(let i=0;i<len;i++) out[i]=inp[len-1-i];
-    }
-    const src=actx.createBufferSource();
-    src.buffer=rb; src.playbackRate.value=revSpd;
-    src.connect(getChain());
-    const playAt=Math.max(revNextStart, actx.currentTime);
-    const dur=chunkSec/revSpd;
-    src.start(playAt); src.stop(playAt+dur);
-    revNextStart=playAt+dur;
-    revPos-=chunkSec;
-  }
-  // Reschedule
-  const delay=Math.max(20,(revNextStart - actx.currentTime - AHEAD)*1000);
-  revTimer=setTimeout(scheduleRevChunk, delay);
-}
-
-/* ══════════════════════════════════════════════════════════
-   RAF LOOP — main animation + tape head sync
-══════════════════════════════════════════════════════════ */
-let wheelAngle = 0;
-let lastTs     = 0;
-const $wsvg    = document.getElementById('wheel-svg');
-const $wst     = document.getElementById('wheel-status');
-
-function raf(ts){
-  requestAnimationFrame(raf);
-  const dt=lastTs?(ts-lastTs)/1000:0;
-  lastTs=ts;
-
-  if(!isInteracting && isPlaying && abuf){
-    const spd = isFree ? freeSpeed : motorSpeed;
-
-    // Sync tape head
-    if(reverseMode && revRunning){
-      // revPos tracks current position (it decrements as chunks play)
-      // We interpolate between scheduled chunk boundaries
-      head = Math.max(0, revPos + (revNextStart - actx.currentTime)*revSpd);
-    } else if(fwdNode){
-      head = fwdHeadStart + (actx.currentTime - fwdCtxStart)*fwdRate;
-      if(head>=trackDur) head=trackDur;
-    }
-    head=Math.max(0,Math.min(head,trackDur));
-
-    // Auto-spin wheel (only in motor mode, not free)
-    if(!isFree){
-      const dps = spd * 200; // degrees per second
-      wheelAngle += dps * dt;
-    }
-  }
-
-  // Odometer transition speed
-  const displaySpd = isPlaying ? (isFree?freeSpeed:Math.abs(motorSpeed)) : 0;
-  odoDur = displaySpd>0 ? Math.max(0.03, 0.10/displaySpd) : 0.10;
-
-  odoSet(head);
-  applyWheel();
-  updateSpdBar();
-  drawHead();
-  updateAnalyzer();
-}
-requestAnimationFrame(raf);
-
-function applyWheel(){
-  $wsvg.style.transform=`rotate(${wheelAngle % 360}deg)`;
-}
-
-/* ══════════════════════════════════════════════════════════
-   WHEEL INTERACTION
-══════════════════════════════════════════════════════════ */
-const $wo = document.getElementById('wheel-outer');
-let isInteracting = false;
-let prevAng=null, angVel=0, prevTs2=0;
-let momentRaf=null;
-
-function evtAngle(e){
-  const r=$wo.getBoundingClientRect();
-  const cx=r.left+r.width/2, cy=r.top+r.height/2;
-  const p=e.touches?e.touches[0]:e;
-  return Math.atan2(p.clientY-cy, p.clientX-cx)*(180/Math.PI);
-}
-
-function wStart(e){
-  e.preventDefault();
-  initCtx();
-  isInteracting=true;
-  prevAng=evtAngle(e);
-  angVel=0; prevTs2=performance.now();
-  if(momentRaf){cancelAnimationFrame(momentRaf);momentRaf=null;}
-  $wo.classList.add('active');
-  // Clutch: stop auto sources
-  stopFwd(); stopRev();
-  setStatus('CLUTCH ENGAGED');
-}
-
-const DEG_SEC = 110; // wheel degrees → 1 second of tape
-
-function wMove(e){
-  if(!isInteracting) return;
-  e.preventDefault();
-  const ang=evtAngle(e);
-  let d=ang-prevAng;
-  if(d>180) d-=360;
-  if(d<-180) d+=360;
-
-  const now=performance.now();
-  const dtm=(now-prevTs2)||16;
-  angVel=d/dtm*1000; // deg/s
-  prevTs2=now;
-
-  wheelAngle+=d;
-
-  if(isFree){
-    // Dial speed
-    const ds=(d/360)*0.6;
-    freeSpeed=Math.max(0,Math.min(2.0,freeSpeed+ds));
-  } else {
-    // Scrub tape
-    const dt=d/DEG_SEC;
-    head=Math.max(0,Math.min(trackDur,head+dt));
-    // Realtime audio while scrubbing
-    if(abuf && isPlaying){
-      // If dragging backward, trigger tiny reverse bursts
-      // We update on release for cleanliness
-    }
-  }
-  prevAng=ang;
-}
-
-function wEnd(e){
-  if(!isInteracting) return;
-  isInteracting=false;
-  $wo.classList.remove('active');
-
-  if(isFree){
-    // Resume audio at dialed speed
-    if(isPlaying && abuf){
-      startFwd(head, Math.max(0.01,freeSpeed));
-    }
-    setStatus(`FREE SPEED · ${freeSpeed.toFixed(2)}×`);
-  } else {
-    // Resume from new head position
-    if(isPlaying && abuf){
-      head=Math.max(0,Math.min(trackDur,head));
-      if(angVel < -15){
-        // Backward spin: reverse playback
-        const spd=Math.min(2.0, Math.abs(angVel)/DEG_SEC);
-        startRev(head, spd);
-      } else if(angVel > -5){
-        // Forward or negligible
-        startFwd(head, motorSpeed>0?motorSpeed:1.0);
-      } else {
-        startFwd(head, motorSpeed>0?motorSpeed:1.0);
-      }
-    }
-    setStatus(isPlaying?'PLAYING':'PAUSED');
-  }
-
-  // Visual momentum decay
-  if(Math.abs(angVel)>30){
-    let v=angVel*0.008;
-    function coast(){
-      v*=0.88;
-      wheelAngle+=v;
-      applyWheel();
-      if(Math.abs(v)>0.5) momentRaf=requestAnimationFrame(coast);
-    }
-    momentRaf=requestAnimationFrame(coast);
-  }
-}
-
-// pointer events (unified mouse+touch)
-$wo.addEventListener('mousedown', wStart, {passive:false});
-$wo.addEventListener('touchstart', wStart, {passive:false});
-window.addEventListener('mousemove', wMove, {passive:false});
-window.addEventListener('touchmove', wMove, {passive:false});
-window.addEventListener('mouseup',   wEnd);
-window.addEventListener('touchend',  wEnd);
-window.addEventListener('touchcancel',wEnd);
-
-/* ══════════════════════════════════════════════════════════
-   TRANSPORT BUTTONS
-══════════════════════════════════════════════════════════ */
-const $bplay  = document.getElementById('btn-play');
-const $bpause = document.getElementById('btn-pause');
-const $bffwd  = document.getElementById('btn-ffwd');
-const $brew   = document.getElementById('btn-rew');
-const $bfree  = document.getElementById('btn-free');
-const $smsg   = document.getElementById('smsg');
-const $smode  = document.getElementById('smode');
-
-function setStatus(t){ $smsg.textContent=t.toUpperCase(); }
-
-function updateBtns(){
-  [$bplay,$bpause,$bffwd,$brew].forEach(b=>{b.classList.remove('on','lit');});
-  if(isPlaying){
-    if(motorSpeed===2.0)       $bffwd.classList.add('lit');
-    else if(reverseMode)       $brew.classList.add('lit');
-    else                       $bplay.classList.add('lit');
-  }
-  $bfree.classList.toggle('on',isFree);
-  let modeStr='STOPPED';
-  if(isPlaying){
-    if(isFree)          modeStr=`FREE · ${freeSpeed.toFixed(2)}×`;
-    else if(reverseMode) modeStr='REWIND';
-    else if(motorSpeed===2.0) modeStr='FFWD · 2.0×';
-    else                modeStr='PLAY · 1.0×';
-  }
-  $smode.textContent=modeStr;
-  $wst.textContent = isFree
-    ? 'FREE SPIN'
-    : (isPlaying?(reverseMode?'REV MOTOR':'MOTOR ENGAGED'):'MOTOR STOPPED');
-}
-
-function doMotor(spd){
-  if(!abuf){ setStatus('NO TAPE LOADED'); return; }
-  initCtx();
-  isPlaying=true; motorSpeed=Math.abs(spd);
-  reverseMode=false;
-  stopFwd(); stopRev();
-  if(spd<0){
-    startRev(head, Math.abs(spd));
-    reverseMode=true;
-  } else {
-    startFwd(head, spd);
-  }
-  updateBtns();
-}
-
-$bplay.addEventListener('click',()=>{ if(isFree)return; doMotor(1.0); setStatus('PLAY'); });
-$bffwd.addEventListener('click',()=>{ if(isFree)return; doMotor(2.0); setStatus('FAST FORWARD'); });
-$brew.addEventListener('click',()=>{
-  if(isFree) return;
-  if(!abuf){ setStatus('NO TAPE LOADED'); return; }
-  initCtx();
-  isPlaying=true; motorSpeed=0.5; reverseMode=true;
-  stopFwd(); startRev(head, 0.5);
-  updateBtns(); setStatus('REWIND · 0.5×');
-});
-$bpause.addEventListener('click',()=>{
-  if(!abuf) return;
-  isPlaying=false; stopFwd(); stopRev();
-  updateBtns(); setStatus('PAUSED');
-});
-
-/* ── FREE SPIN ── */
-$bfree.addEventListener('click',()=>{
-  if(!abuf && !isFree){ setStatus('LOAD TAPE FIRST'); return; }
-  isFree=!isFree;
-  if(isFree){
-    // Enter: decouple wheel, music continues
-    freeSpeed=Math.max(0.01, motorSpeed>0?motorSpeed:1.0);
-    // Audio keeps playing at freeSpeed — restart to set exact rate
-    if(isPlaying){
-      stopFwd(); stopRev();
-      startFwd(head, freeSpeed);
-    }
-    setStatus('FREE SPIN · TURN WHEEL TO DIAL SPEED');
-  } else {
-    // Exit: commit speed, re-lock motor
-    motorSpeed=Math.max(0, Math.min(2.0, freeSpeed));
-    if(isPlaying){
-      stopFwd(); stopRev();
-      if(motorSpeed>0) startFwd(head, motorSpeed);
-    }
-    setStatus(`SPEED LOCKED · ${motorSpeed.toFixed(2)}×`);
-  }
-  updateBtns();
-});
-
-/* ══════════════════════════════════════════════════════════
-   SPEED BAR
-══════════════════════════════════════════════════════════ */
-function updateSpdBar(){
-  const s=isFree?freeSpeed:Math.max(0,motorSpeed);
-  document.getElementById('spd-fill').style.width=(s/2*100)+'%';
-  document.getElementById('spd-val').textContent=s.toFixed(2)+'×';
-}
-
-/* ══════════════════════════════════════════════════════════
-   STEREO FREQUENCY ANALYZER
-   ─ Two AnalyserNode instances fed via ChannelSplitterNode
-   ─ Left & Right rendered independently on their own canvas
-   ─ Bar graph: frequency bins mapped to log scale, colored
-     green→yellow→orange→red by amplitude
-   ─ Peak hold: per-bin peak dots that hang then fall slowly
-   ─ Correlation meter: measures L/R phase relationship
-   ─ All drawing instantly zeroes when !isPlaying
-══════════════════════════════════════════════════════════ */
-
-const cvL   = document.getElementById('canvas-l');
-const cvR   = document.getElementById('canvas-r');
-const cx2L  = cvL.getContext('2d');
-const cx2R  = cvR.getContext('2d');
-const $pkL  = document.getElementById('peak-l');
-const $pkR  = document.getElementById('peak-r');
-const $corrFill = document.getElementById('corr-fill');
-const $corrVal  = document.getElementById('corr-val');
-
-// FFT config — 256 bins gives us a tight, readable bar display
-const FFT_SIZE   = 512;   // must be power of 2; binCount = FFT_SIZE/2 = 256
-const BIN_COUNT  = FFT_SIZE / 2;  // 256 frequency bins
-const NUM_BARS   = 48;    // how many bars we actually render (grouped bins)
-const PEAK_HOLD  = 60;    // frames a peak dot lingers before falling
-const PEAK_FALL  = 0.4;   // pixels per frame the peak falls after hold
-
-// Per-bar state arrays
-const peakL    = new Float32Array(NUM_BARS);  // current peak height (0..1)
-const peakR    = new Float32Array(NUM_BARS);
-const peakHoldL= new Int16Array(NUM_BARS).fill(0);  // countdown frames
-const peakHoldR= new Int16Array(NUM_BARS).fill(0);
-
-// Raw frequency data arrays (byte magnitude, 0-255)
-const freqL = new Uint8Array(BIN_COUNT);
-const freqR = new Uint8Array(BIN_COUNT);
-
-// Time domain for correlation
-const timeL = new Float32Array(FFT_SIZE);
-const timeR = new Float32Array(FFT_SIZE);
-
-// Smoothed bar values (exponential falloff for natural decay)
-const smoothL = new Float32Array(NUM_BARS);
-const smoothR = new Float32Array(NUM_BARS);
-const SMOOTH_ATK = 0.85;   // attack: jump up fast
-const SMOOTH_REL = 0.12;   // release: fall slowly
-
-// Global peak readout (dBFS), with hold + fall
-let masterPeakL = -Infinity, masterPeakR = -Infinity;
-let mPeakHoldL  = 0, mPeakHoldR = 0;
-
-// Map bar index → log-scaled bin range [start, end)
-// Human hearing is logarithmic; we spread bins accordingly.
-const binRanges = (function(){
-  const ranges = [];
-  const minFreq = 20, maxFreq = 20000;
-  for(let i = 0; i < NUM_BARS; i++){
-    // log-linear interpolation across audible spectrum
-    const f0 = minFreq * Math.pow(maxFreq/minFreq,  i      / NUM_BARS);
-    const f1 = minFreq * Math.pow(maxFreq/minFreq, (i+1)   / NUM_BARS);
-    // Convert frequency to bin index (bin = freq * FFT_SIZE / sampleRate)
-    // We use 44100 as reference; will be corrected when actx is available
-    const b0 = Math.max(0, Math.round(f0 * FFT_SIZE / 44100));
-    const b1 = Math.min(BIN_COUNT-1, Math.round(f1 * FFT_SIZE / 44100));
-    ranges.push([Math.min(b0,b1), Math.max(b0,b1)+1]);
-  }
-  return ranges;
-})();
-
-// Recompute bin ranges once we know real sampleRate
-function rebuildBinRanges(sampleRate){
-  const minFreq=20, maxFreq=Math.min(20000, sampleRate/2);
-  for(let i=0;i<NUM_BARS;i++){
-    const f0=minFreq*Math.pow(maxFreq/minFreq, i    /NUM_BARS);
-    const f1=minFreq*Math.pow(maxFreq/minFreq,(i+1) /NUM_BARS);
-    const b0=Math.max(0,Math.round(f0*FFT_SIZE/sampleRate));
-    const b1=Math.min(BIN_COUNT-1,Math.round(f1*FFT_SIZE/sampleRate));
-    binRanges[i]=[Math.min(b0,b1),Math.max(b0,b1)+1];
-  }
-}
-
-// Color ramp: amplitude 0→1 maps to cyan→yellow→orange→red
-function barColor(amp){
-  // amp: 0.0 (silence) → 1.0 (clipping)
-  if(amp < 0.5){
-    // cyan (#00ffcc) → yellow (#ffee00)
-    const t = amp * 2;
-    const r = Math.round(255 * t);
-    const g = Math.round(255 - 3*t);
-    const b = Math.round(204 * (1-t));
-    return `rgb(${r},${Math.max(g,180)},${b})`;
-  } else {
-    // yellow → orange (#ff5500) → red (#ff0000)
-    const t = (amp - 0.5) * 2;
-    const r = 255;
-    const g = Math.round(238 * (1-t) * 0.5);
-    return `rgb(${r},${Math.max(0,g)},0)`;
-  }
-}
-
-// Draw one analyzer channel onto a canvas
-function drawChannel(canvas, ctx, freqData, smooth, peaks, peakHolds, peakElId){
-  const W = canvas.width;
-  const H = canvas.height;
-
-  // Background
-  ctx.fillStyle = '#050505';
-  ctx.fillRect(0, 0, W, H);
-
-  // Subtle horizontal dB grid lines (0, -12, -24, -36, -48 dB)
-  ctx.strokeStyle = '#151515';
-  ctx.lineWidth = 1;
-  [0, 0.25, 0.5, 0.75, 1.0].forEach(t => {
-    const y = Math.round(t * (H-1)) + 0.5;
-    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
-  });
-
-  if(!isPlaying || !analL){
-    // Zero all bars with a fast decay animation
-    for(let i=0;i<NUM_BARS;i++){
-      smooth[i]=Math.max(0, smooth[i]-0.04);
-      peaks[i] =Math.max(0, peaks[i] -0.02);
-      peakHolds[i]=0;
-    }
-  } else {
-    // Read frequency magnitude for each bar (max bin in range)
-    for(let i=0;i<NUM_BARS;i++){
-      const [b0,b1]=binRanges[i];
-      let mx=0;
-      for(let b=b0;b<b1;b++) mx=Math.max(mx, freqData[b]);
-      const amp = mx/255;  // 0..1 linear amplitude
-
-      // Smooth: fast attack, slow release
-      if(amp > smooth[i]) smooth[i] = smooth[i]*SMOOTH_ATK + amp*(1-SMOOTH_ATK);
-      else                 smooth[i] = smooth[i]*(1-SMOOTH_REL) + amp*SMOOTH_REL;
-
-      // Peak hold
-      if(smooth[i] >= peaks[i]){
-        peaks[i]     = smooth[i];
-        peakHolds[i] = PEAK_HOLD;
-      } else {
-        if(peakHolds[i]>0) peakHolds[i]--;
-        else peaks[i] = Math.max(0, peaks[i]-PEAK_FALL/H);
-      }
-    }
-  }
-
-  // Draw bars
-  const barW    = W / NUM_BARS;
-  const gap     = Math.max(1, barW * 0.18);
-  const drawW   = barW - gap;
-
-  for(let i=0;i<NUM_BARS;i++){
-    const amp = smooth[i];
-    if(amp < 0.001) continue;
-
-    const x    = i * barW;
-    const barH = amp * H;
-    const y    = H - barH;
-
-    // Main bar — gradient fill per bar
-    const grad = ctx.createLinearGradient(0, H, 0, 0);
-    grad.addColorStop(0,   barColor(0.1));
-    grad.addColorStop(0.6, barColor(0.55));
-    grad.addColorStop(0.85,barColor(0.8));
-    grad.addColorStop(1,   barColor(1.0));
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, drawW, barH);
-
-    // Subtle inner highlight (top edge glow)
-    ctx.fillStyle='rgba(255,255,255,0.06)';
-    ctx.fillRect(x, y, drawW, Math.min(3,barH*0.1));
-
-    // Peak dot
-    if(peaks[i]>0.01){
-      const py = H - peaks[i]*H - 2;
-      ctx.fillStyle = barColor(peaks[i]);
-      ctx.shadowColor = barColor(peaks[i]);
-      ctx.shadowBlur  = 4;
-      ctx.fillRect(x, Math.max(0,py), drawW, 2);
-      ctx.shadowBlur = 0;
-    }
-  }
-
-  // Master peak readout (dBFS) — find loudest bin
-  let maxAmp=0;
-  for(let i=0;i<NUM_BARS;i++) maxAmp=Math.max(maxAmp,smooth[i]);
-  const dbfs = maxAmp>0.0001 ? 20*Math.log10(maxAmp) : -Infinity;
-  const $pk  = document.getElementById(peakElId);
-  if(isPlaying && maxAmp>0.0001){
-    $pk.textContent = (dbfs>=0?'+':'')+dbfs.toFixed(1)+'dB';
-    $pk.style.color = dbfs>-3 ? '#ff5500' : dbfs>-12 ? '#ffaa00' : 'var(--cyan)';
-  } else {
-    $pk.textContent = '-∞';
-    $pk.style.color = 'var(--gray2)';
-  }
-}
-
-// Draw stereo correlation meter
-// Correlation: +1 = perfectly mono, 0 = uncorrelated, -1 = out of phase
-function drawCorrelation(){
-  if(!analL || !isPlaying){
-    $corrFill.style.left='50%'; $corrFill.style.width='0%';
-    $corrVal.textContent='---'; $corrVal.style.color='var(--gray2)'; return;
-  }
-  analL.getFloatTimeDomainData(timeL);
-  analR.getFloatTimeDomainData(timeR);
-
-  // Pearson correlation coefficient over current time frame
-  const N=timeL.length;
-  let sumL=0, sumR=0;
-  for(let i=0;i<N;i++){ sumL+=timeL[i]; sumR+=timeR[i]; }
-  const mL=sumL/N, mR=sumR/N;
-  let num=0, denL=0, denR=0;
-  for(let i=0;i<N;i++){
-    const dl=timeL[i]-mL, dr=timeR[i]-mR;
-    num+=dl*dr; denL+=dl*dl; denR+=dr*dr;
-  }
-  const corr = (denL*denR>0) ? num/Math.sqrt(denL*denR) : 0;
-  const c    = Math.max(-1, Math.min(1, corr));
-
-  // Map -1..+1 → 0..100% left, center fill from 50%
-  const pct  = (c+1)/2; // 0..1
-  const midX = 50;
-  if(c>=0){
-    $corrFill.style.left  = midX+'%';
-    $corrFill.style.width = (pct - 0.5)*100+'%';
-    $corrFill.style.background = 'var(--cyan)';
-  } else {
-    $corrFill.style.left  = pct*100+'%';
-    $corrFill.style.width = (0.5-pct)*100+'%';
-    $corrFill.style.background = '#ff5500';
-  }
-  const col = c> 0.3 ? 'var(--cyan)' : c>-0.1 ? '#ffaa00' : '#ff5500';
-  $corrVal.style.color = col;
-  $corrVal.textContent = c.toFixed(2);
-}
-
-// Master update — called every RAF frame
-function updateAnalyzer(){
-  // Resize canvases to match actual CSS pixel size (for sharpness)
-  const dpr = Math.min(window.devicePixelRatio||1, 2);
-  [cvL, cvR].forEach(cv=>{
-    const rect = cv.getBoundingClientRect();
-    const W    = Math.round(rect.width  * dpr);
-    const H    = Math.round(rect.height * dpr);
-    if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
-  });
-
-  if(analL){
-    analL.getByteFrequencyData(freqL);
-    analR.getByteFrequencyData(freqR);
-    if(abuf) rebuildBinRanges(actx.sampleRate);
-  }
-
-  drawChannel(cvL, cx2L, freqL, smoothL, peakL, peakHoldL, 'peak-l');
-  drawChannel(cvR, cx2R, freqR, smoothR, peakR, peakHoldR, 'peak-r');
-  drawCorrelation();
-}
-
-/* ══════════════════════════════════════════════════════════
-   WAVEFORM
-══════════════════════════════════════════════════════════ */
-const $wc=document.getElementById('wave-canvas');
-const ctx2=$wc.getContext('2d');
-let waveArr=null;
-
-function buildWave(buf){
-  const ch=buf.getChannelData(0);
-  const N=500, step=Math.floor(ch.length/N);
-  waveArr=new Float32Array(N);
-  for(let i=0;i<N;i++){
-    let mx=0;
-    for(let j=0;j<step;j++) mx=Math.max(mx,Math.abs(ch[i*step+j]));
-    waveArr[i]=mx;
-  }
-  drawWave();
-}
-
-function drawWave(){
-  const W=$wc.width, H=$wc.height;
-  ctx2.clearRect(0,0,W,H);
-  ctx2.fillStyle='#090909'; ctx2.fillRect(0,0,W,H);
-  if(!waveArr) return;
-  const bw=W/waveArr.length;
-  ctx2.fillStyle='#2c2c2c';
-  for(let i=0;i<waveArr.length;i++){
-    const a=waveArr[i]*H*0.44;
-    ctx2.fillRect(i*bw, H/2-a, Math.max(1,bw-0.5), a*2);
-  }
-}
-
-function drawHead(){
-  if(!waveArr||trackDur===0) return;
-  drawWave();
-  const W=$wc.width, H=$wc.height;
-  const x=(head/trackDur)*W;
-  ctx2.fillStyle='rgba(255,85,0,0.15)';
-  ctx2.fillRect(0,0,x,H);
-  // played portion wave tint
-  ctx2.fillStyle='rgba(255,85,0,0.3)';
-  if(waveArr) for(let i=0;i<Math.floor(x/($wc.width/waveArr.length));i++){
-    const bw=$wc.width/waveArr.length;
-    const a=waveArr[i]*H*0.44;
-    ctx2.fillRect(i*bw,H/2-a,Math.max(1,bw-0.5),a*2);
-  }
-  // playhead
-  ctx2.fillStyle='#ff5500';
-  ctx2.fillRect(x-1,0,2,H);
-}
-
-// Seek by clicking waveform
-$wc.addEventListener('click',e=>{
-  if(!abuf) return; initCtx();
-  const r=$wc.getBoundingClientRect();
-  head=Math.max(0,Math.min(trackDur,(e.clientX-r.left)/r.width*trackDur));
-  if(isPlaying){ stopFwd(); stopRev(); startFwd(head, isFree?Math.max(0.01,freeSpeed):Math.max(0.01,motorSpeed)); }
-  odoSet(head); drawHead();
-});
-
-/* ══════════════════════════════════════════════════════════
-   FILE LOADING
-══════════════════════════════════════════════════════════ */
-const $dz=document.getElementById('drop-zone');
-const $fi=document.getElementById('file-input');
-const $tn=document.getElementById('tname');
-const $dzt=document.getElementById('dzt');
-
-$dz.addEventListener('click',()=>$fi.click());
-$fi.addEventListener('change',e=>{ if(e.target.files[0]) loadAudio(e.target.files[0]); });
-$dz.addEventListener('dragover',e=>{ e.preventDefault(); $dz.classList.add('over'); });
-$dz.addEventListener('dragleave',()=>$dz.classList.remove('over'));
-$dz.addEventListener('drop',e=>{ e.preventDefault(); $dz.classList.remove('over'); if(e.dataTransfer.files[0]) loadAudio(e.dataTransfer.files[0]); });
-
-function loadAudio(file){
-  if(!file.type.startsWith('audio/')&&!file.name.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i)){
-    setStatus('INVALID FORMAT'); return;
-  }
-  initCtx();
-  // stop everything
-  isPlaying=false; isFree=false; head=0;
-  stopFwd(); stopRev();
-  abuf=null; waveArr=null; trackDur=0;
-  updateBtns(); drawWave(); odoSet(0);
-
-  const name=file.name.replace(/\.[^/.]+$/,'').toUpperCase().slice(0,40);
-  $tn.textContent=name;
-  $dzt.textContent='LOADING TAPE...';
-  setStatus('DECODING AUDIO...');
-
-  const fr=new FileReader();
-  fr.onload=ev=>{
-    actx.decodeAudioData(ev.target.result.slice(0), buf=>{
-      abuf=buf; trackDur=buf.duration;
-      $dz.classList.add('loaded');
-      $dzt.textContent='TAPE LOADED · TAP TO REPLACE';
-      buildWave(buf);
-      setStatus('TAPE READY · PRESS PLAY');
-      updateBtns();
-    }, ()=>{ setStatus('DECODE ERROR · TRY ANOTHER FILE'); $dzt.textContent='DROP AUDIO · OR TAP TO BROWSE'; });
-  };
-  fr.readAsArrayBuffer(file);
-}
-
-/* ══════════════════════════════════════════════════════════
-   INIT
-══════════════════════════════════════════════════════════ */
-odoSet(0);
-updateSpdBar();
-updateBtns();
-setStatus('STANDBY · LOAD TAPE TO BEGIN');
-
-})();
-</script>
-</body>
+<!DOCTYPE html> 
+<html lang="en"> 
+<head> 
+    <meta charset="UTF-8"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"> 
+    <title>TP-7 TAPE EMULATOR</title> 
+    <style> 
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap'); 
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0} 
+        :root{ 
+            --bg:#161616;--bg2:#1e1e1e;--bg3:#242424; 
+            --accent:#ff5500;--cyan:#00ffcc;--cyan-d:#00aa88; 
+            --gray:#3a3a3a;--gray2:#555;--text:#aaaaaa; 
+            --mono:'Share Tech Mono',monospace;--ui:'Rajdhani',sans-serif; 
+        } 
+        html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:var(--ui);overflow-x:hidden;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent} 
+        
+        #app{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:10px 8px 20px;gap:8px} 
+        #topbar{width:100%;max-width:920px;display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--gray)} 
+        #brand{font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--accent);text-transform:uppercase} 
+        #layout-toggle{font-family:var(--mono);font-size:9px;letter-spacing:2px;background:var(--bg3);border:1px solid var(--gray);color:var(--cyan);padding:5px 12px;cursor:pointer;text-transform:uppercase;transition:border-color .2s,background .2s} 
+        #layout-toggle:hover{border-color:var(--cyan);background:#1a2a28} 
+        
+        #main-container{width:100%;max-width:920px;display:flex;gap:14px;align-items:flex-start;transition:all .3s} 
+        #main-container.pc{flex-direction:row} 
+        #main-container.mob{flex-direction:column;align-items:center} 
+        .panel{background:var(--bg2);border:1px solid var(--gray);padding:14px} 
+        
+        /* OVERHAULED LEFT PANEL INTERFACE */
+        #left-panel{flex:0 0 320px;display:flex;flex-direction:column;align-items:center;gap:12px} 
+        #main-container.mob #left-panel{width:100%;max-width:340px;flex:unset} 
+        #right-panel{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px} 
+        #main-container.mob #right-panel{width:100%;max-width:340px;flex:unset} 
+        .slabel{font-family:var(--mono);font-size:8px;letter-spacing:3px;color:var(--gray2);text-transform:uppercase;margin-bottom:8px} 
+        
+        /* ODOMETER */
+        #clock-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:12px;display:flex;flex-direction:column;align-items:center;position:relative} 
+        #clock-panel::after{content:'';position:absolute;left:0;right:0;bottom:0;height:14px;background:linear-gradient(transparent,#090909);pointer-events:none;z-index:3} 
+        #clock-panel::before{content:'';position:absolute;left:0;right:0;top:0;height:14px;background:linear-gradient(#090909,transparent);pointer-events:none;z-index:3} 
+        #odometer{display:flex;align-items:center;gap:2px;height:44px;overflow:hidden;position:relative;z-index:1} 
+        .odo-wrap{width:26px;height:44px;overflow:hidden;background:#050505;border:1px solid #1a1a1a;position:relative} 
+        .odo-strip{display:flex;flex-direction:column;position:absolute;top:0;left:0;width:100%;will-change:transform;transition:transform 0.1s linear;} 
+        .odo-cell{height:44px;line-height:44px;text-align:center;font-family:var(--mono);font-size:26px;color:var(--cyan);text-shadow:0 0 10px var(--cyan),0 0 22px #00ffcc55} 
+        .odo-sep{font-family:var(--mono);font-size:20px;color:var(--cyan);text-shadow:0 0 8px var(--cyan);line-height:44px;padding:0 1px;opacity:.6} 
+        
+        /* WHEEL STRUCTURE */
+        #wheel-panel{width:100%;display:flex;flex-direction:column;align-items:center;gap:8px} 
+        #wheel-outer{position:relative;width:230px;height:230px;touch-action:none;cursor:grab} 
+        #wheel-outer:active{cursor:grabbing} 
+        #wheel-svg{width:100%;height:100%;display:block;transition:filter .15s} 
+        #wheel-outer.active #wheel-svg{filter:drop-shadow(0 0 14px #ff550088)} 
+        #wheel-status{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--gray2);text-transform:uppercase} 
+        
+        /* SPEED INDICATOR */
+        #spd-wrap{width:100%;padding:0 2px} 
+        #spd-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--gray2)} 
+        #spd-track{width:100%;height:4px;background:var(--gray);margin:4px 0;position:relative;overflow:hidden} 
+        #spd-fill{height:100%;background:var(--accent);width:50%;transition:width .06s linear} 
+        #spd-val{font-family:var(--mono);font-size:11px;color:var(--cyan);text-shadow:0 0 6px var(--cyan);text-align:right} 
+        
+        /* NEW ALIGNED SUB-TAPE UPLOAD PANEL */
+        #upload-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:10px} 
+        #drop-zone{border:1px dashed var(--gray2);padding:14px 10px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s} 
+        #drop-zone:hover,#drop-zone.over{border-color:var(--accent);background:#190d00} 
+        #dzt{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--gray2);text-transform:uppercase} 
+        #drop-zone.loaded #dzt{color:var(--cyan)} 
+        #tname{font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:14px;margin-top:5px} 
+        #file-input{display:none} 
+        
+        /* WAVEFORM SCREEN */
+        #wave-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:8px} 
+        #wave-canvas{width:100%;height:54px;display:block;cursor:pointer} 
+        
+        /* NEW RE-ALIGNED TRANSPORT DECK BELOW MOTOR WHEEL */
+        #ctrl-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:12px} 
+        #btn-grid{display:flex;flex-wrap:wrap;gap:6px} 
+        #left-panel #btn-grid{display:grid;grid-template-columns:repeat(3,1fr);width:100%} 
+        .cbtn{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;background:var(--bg3);border:1px solid var(--gray);color:var(--text);padding:10px 4px;cursor:pointer;transition:all .12s;text-align:center} 
+        .cbtn:hover{border-color:var(--gray2);color:#ddd} 
+        .cbtn:active{background:var(--gray);transform:scale(.97)} 
+        .cbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 14px #ff550055} 
+        .cbtn.lit{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 8px #00ffcc33} 
+        
+        /* STEREO ANALYZER */
+        #analyzer-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:10px 12px;display:flex;flex-direction:column;gap:6px} 
+        #analyzer-row{display:flex;gap:8px;align-items:stretch;height:96px} 
+        .ch-wrap{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0} 
+        .ch-label-row{display:flex;align-items:center;justify-content:space-between} 
+        .ch-lbl{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--gray2);text-transform:uppercase} 
+        .ch-peak{font-family:var(--mono);font-size:8px;color:var(--cyan);text-shadow:0 0 6px var(--cyan);letter-spacing:1px;min-width:36px;text-align:right} 
+        .ch-canvas{width:100%;flex:1;display:block;image-rendering:pixelated} 
+        #analyzer-scale{ display:flex;flex-direction:column;justify-content:space-between; padding:16px 0 2px;width:28px;flex-shrink:0; } 
+        .db-tick{font-family:var(--mono);font-size:7px;color:#333;text-align:center;letter-spacing:0} 
+        #corr-row{display:flex;align-items:center;gap:6px;margin-top:2px} 
+        #corr-lbl{font-family:var(--mono);font-size:7px;color:var(--gray2);letter-spacing:1px;white-space:nowrap} 
+        #corr-track{flex:1;height:3px;background:var(--gray);position:relative;overflow:hidden} 
+        #corr-fill{position:absolute;top:0;height:100%;background:var(--cyan);transition:left .05s linear,width .05s linear} 
+        #corr-val{font-family:var(--mono);font-size:7px;color:var(--gray2);width:28px;text-align:right} 
+        
+        #statusbar{width:100%;max-width:920px;display:flex;align-items:center;justify-content:space-between;padding:4px 10px;border-top:1px solid var(--gray)} 
+        #smsg{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--gray2);text-transform:uppercase} 
+        #smode{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:var(--accent);text-transform:uppercase} 
+        
+        @media(max-width:640px){ 
+            #main-container.pc{flex-direction:column;align-items:center} 
+            #main-container.pc #left-panel,#main-container.pc #right-panel{width:100%;max-width:340px;flex:unset} 
+        } 
+    </style> 
+</head> 
+<body> 
+    <div id="app"> 
+        <div id="topbar"> 
+            <div id="brand">TP-7 // TAPE EMULATOR</div> 
+            <button id="layout-toggle">◫ PC UI</button> 
+        </div> 
+        <div id="main-container" class="pc"> 
+            
+            <div id="left-panel" class="panel"> 
+                
+                <div id="upload-panel"> 
+                    <div class="slabel">MEDIA SOURCE</div> 
+                    <div id="drop-zone"> 
+                        <div id="dzt">DROP AUDIO · OR TAP TO BROWSE</div> 
+                    </div> 
+                    <div id="tname">NO TAPE LOADED</div> 
+                    <input type="file" id="file-input" accept="audio/*"> 
+                </div> 
+
+                <div id="wheel-panel"> 
+                    <div class="slabel">DRIVE WHEEL</div> 
+                    <div id="wheel-outer"> 
+                        <svg id="wheel-svg" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg"> 
+                            <circle cx="120" cy="120" r="116" fill="none" stroke="#1c1c1c" stroke-width="14"/> 
+                            <circle cx="120" cy="120" r="116" fill="none" stroke="#2a2a2a" stroke-width="1"/> 
+                            <g id="grip-g"></g> 
+                            <circle cx="120" cy="120" r="108" fill="#161616" stroke="#2e2e2e" stroke-width="1"/> 
+                            <circle cx="120" cy="120" r="109" fill="none" stroke="#1e1e1e" stroke-width="1"/> 
+                            <circle cx="120" cy="120" r="72" fill="none" stroke="#222" stroke-width="1"/> 
+                            <g id="spoke-g" stroke="#282828" stroke-width="2.5" stroke-linecap="round"></g> 
+                            <circle cx="120" cy="120" r="54" fill="none" stroke="#ff550018" stroke-width="2"/> 
+                            <circle cx="120" cy="120" r="38" fill="#0e0e0e" stroke="#2a2a2a" stroke-width="1.5"/> 
+                            <g id="tick-g" stroke="#222" stroke-width="1"></g> 
+                            <circle cx="120" cy="120" r="11" fill="#0a0a0a" stroke="var(--accent)" stroke-width="1.5"/> 
+                            <circle cx="120" cy="120" r="4.5" fill="var(--accent)"/> 
+                            <rect id="rot-mark" x="117" y="82" width="6" height="14" rx="3" fill="var(--accent)"/> 
+                        </svg> 
+                    </div> 
+                    <div id="wheel-status">MOTOR STOPPED</div> 
+                </div> 
+
+                <div id="btn-grid"> 
+                    <button class="cbtn" id="btn-play">▶ PLAY</button> 
+                    <button class="cbtn" id="btn-pause">⏸ PAUSE</button> 
+                    <button class="cbtn" id="btn-ffwd">⏩ FFWD</button> 
+                    <button class="cbtn" id="btn-rew">⏪ REW</button> 
+                    <button class="cbtn" id="btn-free">⊙ FREE</button> 
+                </div> 
+
+                <div id="spd-wrap"> 
+                    <div id="spd-labels"><span>0.0×</span><span>SPEED METRIC</span><span>2.0×</span></div> 
+                    <div id="spd-track"><div id="spd-fill"></div></div> 
+                    <div id="spd-val">1.00×</div> 
+                </div> 
+            </div> 
+
+            <div id="right-panel"> 
+                <div id="clock-panel" class="panel"> 
+                    <div class="slabel">TAPE POSITION</div> 
+                    <div id="odometer"></div> 
+                </div> 
+                <div id="wave-panel" class="panel"> 
+                    <div class="slabel">WAVEFORM TIMELINE</div> 
+                    <canvas id="wave-canvas" width="600" height="54"></canvas> 
+                </div> 
+                <div id="analyzer-panel" class="panel"> 
+                    <div class="slabel">STEREO FREQUENCY ANALYZER</div> 
+                    <div id="analyzer-row"> 
+                        <div class="ch-wrap"> 
+                            <div class="ch-label-row"> 
+                                <span class="ch-lbl">L</span> 
+                                <span class="ch-peak" id="peak-l">-∞</span> 
+                            </div> 
+                            <canvas class="ch-canvas" id="canvas-l" width="256" height="80"></canvas> 
+                        </div> 
+                        <div id="analyzer-scale"> 
+                            <div class="db-tick">0</div> 
+                            <div class="db-tick">-12</div> 
+                            <div class="db-tick">-24</div> 
+                            <div class="db-tick">-36</div> 
+                            <div class="db-tick">-48</div> 
+                        </div> 
+                        <div class="ch-wrap"> 
+                            <div class="ch-label-row"> 
+                                <span class="ch-peak" id="peak-r" style="text-align:left;min-width:36px">-∞</span> 
+                                <span class="ch-lbl">R</span> </div> 
+                            <canvas class="ch-canvas" id="canvas-r" width="256" height="80"></canvas> 
+                        </div> 
+                    </div> 
+                    <div id="corr-row"> 
+                        <span id="corr-lbl">CORR</span> 
+                        <div id="corr-track"><div id="corr-fill"></div></div> 
+                        <span id="corr-val">0.00</span> 
+                    </div> 
+                </div> 
+            </div> 
+        </div> 
+        <div id="statusbar"> 
+            <div id="smsg">STANDBY · LOAD TAPE TO BEGIN</div> 
+            <div id="smode">OFFLINE</div> 
+        </div> 
+    </div> 
+
+    <script> 
+    (function(){ 
+        'use strict'; 
+        
+        const $mc = document.getElementById('main-container'); 
+        const $lt = document.getElementById('layout-toggle'); 
+        let mobView = false; 
+        $lt.addEventListener('click',()=>{ 
+            mobView = !mobView; 
+            $mc.classList.toggle('pc',!mobView); 
+            $mc.classList.toggle('mob',mobView); 
+            $lt.textContent = mobView ? '◧ MOBILE UI' : '◫ PC UI'; 
+        }); 
+
+        const DIGH = 44; 
+        const $odo = document.getElementById('odometer'); 
+        const strips = []; 
+        const lastD = [0,0,0,0,0,0]; 
+        let odoDur = 0.10; 
+
+        (function buildOdo(){ 
+            [0,1,'s',2,3,'s',4,5].forEach(s=>{ 
+                if(s==='s'){ 
+                    const sep = document.createElement('div'); 
+                    sep.className = 'odo-sep'; sep.textContent = ':'; 
+                    $odo.appendChild(sep); return; 
+                } 
+                const wrap = document.createElement('div'); 
+                wrap.className = 'odo-wrap'; 
+                const strip = document.createElement('div'); 
+                strip.className = 'odo-strip'; 
+                for(let d=0;d<10;d++){ 
+                    const c = document.createElement('div'); 
+                    c.className = 'odo-cell'; c.textContent = d; 
+                    strip.appendChild(c); 
+                } 
+                strip.style.transform = 'translateY(0px)'; 
+                wrap.appendChild(strip); $odo.appendChild(wrap); 
+                strips.push(strip); 
+            }); 
+        })(); 
+
+        function odoSet(totalSec){ 
+            totalSec = Math.max(0,totalSec); 
+            const h = Math.floor(totalSec/3600)%100; 
+            const m = Math.floor((totalSec%3600)/60); 
+            const s = Math.floor(totalSec%60); 
+            const vals = [Math.floor(h/10),h%10, Math.floor(m/10),m%10, Math.floor(s/10),s%10]; 
+            vals.forEach((v,i)=>{ 
+                const strip = strips[i]; 
+                strip.style.transition = `transform ${odoDur}s linear`; 
+                if(v !== lastD[i]){ 
+                    strip.style.transform = `translateY(${-(v*DIGH)}px)`; 
+                    lastD[i] = v; 
+                } 
+            }); 
+        } 
+
+        (function buildWheel(){ 
+            const gg = document.getElementById('grip-g'); 
+            const n = 40, r = 113; 
+            for(let i=0;i<n;i++){ 
+                const a = (i/n)*Math.PI*2, x = 120+r*Math.cos(a), y = 120+r*Math.sin(a); 
+                const d = document.createElementNS('http://www.w3.org/2000/svg','circle'); 
+                d.setAttribute('cx',x.toFixed(1)); d.setAttribute('cy',y.toFixed(1)); 
+                d.setAttribute('r','2.8'); d.setAttribute('fill','#252525'); 
+                gg.appendChild(d); 
+            } 
+            const sg = document.getElementById('spoke-g'); 
+            const ns = 8; 
+            for(let i=0;i<ns;i++){ 
+                const a = (i/ns)*Math.PI*2; 
+                const x2 = 120+96*Math.cos(a), y2 = 120+96*Math.sin(a); 
+                const l = document.createElementNS('http://www.w3.org/2000/svg','line'); 
+                l.setAttribute('x1','120'); l.setAttribute('y1','120'); 
+                l.setAttribute('x2',x2.toFixed(1)); l.setAttribute('y2',y2.toFixed(1)); 
+                sg.appendChild(l); 
+            } 
+            const tg = document.getElementById('tick-g'); 
+            for(let i=0;i<24;i++){ 
+                const a = (i/24)*Math.PI*2; 
+                const r1 = 34, r2 = i%6===0?30:32; 
+                const x1 = 120+r1*Math.cos(a), y1 = 120+r1*Math.sin(a); 
+                const x2 = 120+r2*Math.cos(a), y2 = 120+r2*Math.sin(a); 
+                const l = document.createElementNS('http://www.w3.org/2000/svg','line'); 
+                l.setAttribute('x1',x1.toFixed(1)); l.setAttribute('y1',y1.toFixed(1)); 
+                l.setAttribute('x2',x2.toFixed(1)); l.setAttribute('y2',y2.toFixed(1)); 
+                l.setAttribute('stroke',i%6===0?'#333':'#1e1e1e'); 
+                tg.appendChild(l); 
+            } 
+        })(); 
+
+        let actx=null, abuf=null, trackDur=0; 
+        let isPlaying = false; let isFree = false; 
+        let motorSpeed = 1.0; let freeSpeed = 1.0; 
+        let reverseMode = false; let head = 0.0; 
+        let fwdNode = null; let fwdCtxStart = 0; let fwdHeadStart = 0; let fwdRate = 1.0; 
+        let revRunning = false; let revPos = 0; let revSpd = 1.0; let revNextStart = 0; let revTimer = null; 
+        let analL=null, analR=null, splitter=null; 
+
+        function initCtx(){ 
+            if(!actx){ 
+                actx = new(window.AudioContext||window.webkitAudioContext)(); 
+                buildAnalysers(); 
+            } 
+            if(actx.state==='suspended') actx.resume(); 
+        } 
+
+        function buildAnalysers(){ 
+            analL = actx.createAnalyser(); analL.fftSize = FFT_SIZE; analL.smoothingTimeConstant = 0.0; 
+            analR = actx.createAnalyser(); analR.fftSize = FFT_SIZE; analR.smoothingTimeConstant = 0.0; 
+            splitter = actx.createChannelSplitter(2); 
+            const merger = actx.createChannelMerger(2); 
+            splitter.connect(analL,0); splitter.connect(analR,1); 
+            analL.connect(merger,0,0); analR.connect(merger,0,1); 
+            merger.connect(actx.destination); 
+        } 
+
+        function stopFwd(){ 
+            if(fwdNode){ try{fwdNode.stop();}catch(e){} fwdNode.disconnect(); fwdNode=null; } 
+        } 
+
+        function startFwd(fromSec, rate){ 
+            stopFwd(); stopRev(); 
+            if(!abuf||!actx||rate<=0) return; 
+            const off = Math.max(0,Math.min(fromSec, trackDur-0.001)); 
+            const src = actx.createBufferSource(); 
+            src.buffer = abuf; src.playbackRate.value = rate; 
+            src.connect(splitter); src.start(0, off); 
+            fwdNode = src; fwdCtxStart = actx.currentTime; fwdHeadStart = off; fwdRate = rate; 
+            reverseMode = false; 
+            src.onended = () => { 
+                if(fwdNode===src){ 
+                    fwdNode = null; 
+                    if(isPlaying&&!isInteracting){ head = trackDur; isPlaying = false; setStatus('END OF TAPE'); updateBtns(); } 
+                } 
+            }; 
+        } 
+
+        function stopRev(){ revRunning = false; if(revTimer){ clearTimeout(revTimer); revTimer=null; } } 
+
+        function startRev(fromSec, speed){ 
+            stopFwd(); stopRev(); 
+            if(!abuf||!actx||fromSec<=0) return; 
+            revRunning = true; revPos = Math.min(fromSec, trackDur); revSpd = Math.max(0.05, speed); 
+            revNextStart = actx.currentTime; reverseMode = true; 
+            scheduleRevChunk(); 
+        } 
+
+        function scheduleRevChunk(){ 
+            if(!revRunning||!actx||!abuf) return; 
+            if(revPos<=0.001){ head=0; revRunning=false; isPlaying=false; setStatus('START OF TAPE · LOCK'); updateBtns(); return; } 
+            const AHEAD = 0.20; 
+            while(revNextStart < actx.currentTime + AHEAD){ 
+                const chunkSec = Math.min(0.15, revPos); 
+                const sr = abuf.sampleRate, ch = abuf.numberOfChannels; 
+                const s0 = Math.floor((revPos-chunkSec)*sr); const s1 = Math.floor(revPos*sr); 
+                const len = s1-s0; 
+                if(len<2){ revPos=0; revRunning=false; head=0; isPlaying=false; updateBtns(); return; } 
+                const rb = actx.createBuffer(ch,len,sr); 
+                for(let c=0;c<ch;c++){ 
+                    const inp = abuf.getChannelData(c).subarray(s0,s1); const out = rb.getChannelData(c); 
+                    for(let i=0;i<len;i++) out[i] = inp[len-1-i]; 
+                } 
+                const src = actx.createBufferSource(); 
+                src.buffer = rb; src.playbackRate.value = revSpd; src.connect(splitter); 
+                const playAt = Math.max(revNextStart, actx.currentTime); 
+                const dur = chunkSec/revSpd; 
+                src.start(playAt); src.stop(playAt+dur); 
+                revNextStart = playAt+dur; revPos -= chunkSec; 
+            } 
+            const delay = Math.max(15,(revNextStart - actx.currentTime - AHEAD)*1000); 
+            revTimer = setTimeout(scheduleRevChunk, delay); 
+        } 
+
+        let wheelAngle = 0; let lastTs = 0; 
+        const $wsvg = document.getElementById('wheel-svg'); 
+        const $wst = document.getElementById('wheel-status'); 
+
+        function raf(ts){ 
+            requestAnimationFrame(raf); 
+            const dt = lastTs?(ts-lastTs)/1000:0; lastTs = ts; 
+            if(!isInteracting && isPlaying && abuf){ 
+                const spd = isFree ? freeSpeed : motorSpeed; 
+                if(reverseMode && revRunning){ 
+                    head = Math.max(0, revPos + (revNextStart - actx.currentTime)*revSpd); 
+                } else if(fwdNode){ 
+                    head = fwdHeadStart + (actx.currentTime - fwdCtxStart)*fwdRate; 
+                    if(head>=trackDur) head=trackDur; 
+                } 
+                head = Math.max(0,Math.min(head,trackDur)); 
+                if(!isFree){ 
+                    const directionMultiplier = reverseMode ? -1 : 1;
+                    wheelAngle += (spd * 200) * directionMultiplier * dt; 
+                } 
+            } 
+            const displaySpd = isPlaying ? (isFree?freeSpeed:Math.abs(motorSpeed)) : 0; 
+            odoDur = displaySpd>0 ? Math.max(0.03, 0.10/displaySpd) : 0.10; 
+            odoSet(head); applyWheel(); updateSpdBar(); drawHead(); updateAnalyzer(); 
+        } 
+        requestAnimationFrame(raf); 
+
+        function applyWheel(){ $wsvg.style.transform=`rotate(${wheelAngle % 360}deg)`; } 
+
+        const $wo = document.getElementById('wheel-outer'); 
+        let isInteracting = false; let prevAng=null, angVel=0, prevTs2=0; let momentRaf=null; 
+
+        function evtAngle(e){ 
+            const r = $wo.getBoundingClientRect(); 
+            const cx = r.left+r.width/2, cy = r.top+r.height/2; 
+            const p = e.touches?e.touches[0]:e; 
+            return Math.atan2(p.clientY-cy, p.clientX-cx)*(180/Math.PI); 
+        } 
+
+        function wStart(e){ 
+            e.preventDefault(); initCtx(); isInteracting=true; prevAng=evtAngle(e); angVel=0; 
+            prevTs2 = performance.now(); 
+            if(momentRaf){cancelAnimationFrame(momentRaf);momentRaf=null;} 
+            $wo.classList.add('active'); stopFwd(); stopRev(); setStatus('CLUTCH ENGAGED'); 
+        } 
+
+        const DEG_SEC = 110; 
+        function wMove(e){ 
+            if(!isInteracting) return; e.preventDefault(); 
+            const ang = evtAngle(e); let d = ang-prevAng; 
+            if(d>180) d-=360; if(d<-180) d+=360; 
+            const now = performance.now(); const dtm = (now-prevTs2)||16; 
+            angVel = d/dtm*1000; prevTs2=now; wheelAngle+=d; 
+            if(isFree){ 
+                const ds = (d/360)*0.6; freeSpeed = Math.max(0,Math.min(2.0,freeSpeed+ds)); 
+            } else { 
+                const dt = d/DEG_SEC; head = Math.max(0,Math.min(trackDur,head+dt)); 
+            } 
+            prevAng=ang; 
+        } 
+
+        function wEnd(e){ 
+            if(!isInteracting) return; isInteracting=false; $wo.classList.remove('active'); 
+            if(isFree){ 
+                if(isPlaying && abuf){ startFwd(head, Math.max(0.01,freeSpeed)); } 
+                setStatus(`FREE SPEED · ${freeSpeed.toFixed(2)}×`); 
+            } else { 
+                if(isPlaying && abuf){ 
+                    head = Math.max(0,Math.min(trackDur,head)); 
+                    if(angVel < -25){ 
+                        const spd = Math.min(2.0, Math.abs(angVel)/DEG_SEC); startRev(head, spd); 
+                    } else { 
+                        startFwd(head, motorSpeed>0?motorSpeed:1.0); 
+                    } 
+                } 
+                setStatus(isPlaying?'PLAYING':'PAUSED'); 
+            } 
+            if(Math.abs(angVel)>30){ 
+                let v = angVel*0.008; 
+                function coast(){ v*=0.88; wheelAngle+=v; applyWheel(); if(Math.abs(v)>0.5) momentRaf=requestAnimationFrame(coast); } 
+                momentRaf = requestAnimationFrame(coast); 
+            } 
+        } 
+
+        $wo.addEventListener('mousedown', wStart, {passive:false}); $wo.addEventListener('touchstart', wStart, {passive:false}); 
+        window.addEventListener('mousemove', wMove, {passive:false}); window.addEventListener('touchmove', wMove, {passive:false}); 
+        window.addEventListener('mouseup', wEnd); window.addEventListener('touchend', wEnd); window.addEventListener('touchcancel',wEnd); 
+
+        const $bplay = document.getElementById('btn-play'); const $bpause = document.getElementById('btn-pause'); 
+        const $bffwd = document.getElementById('btn-ffwd'); const $brew = document.getElementById('btn-rew'); 
+        const $bfree = document.getElementById('btn-free'); const $smsg = document.getElementById('smsg'); 
+        const $smode = document.getElementById('smode'); 
+        
+        function setStatus(t){ $smsg.textContent = t.toUpperCase(); } 
+
+        function updateBtns(){ 
+            [$bplay,$bpause,$bffwd,$brew].forEach(b=>{b.classList.remove('on','lit');}); 
+            if(isPlaying){ 
+                if(motorSpeed===2.0 && !reverseMode) $bffwd.classList.add('lit'); 
+                else if(reverseMode && motorSpeed===0.5) $brew.classList.add('lit'); 
+                else if(!reverseMode) $bplay.classList.add('lit'); 
+            } 
+            $bfree.classList.toggle('on',isFree); 
+            let modeStr = 'STOPPED'; 
+            if(isPlaying){ 
+                if(isFree) modeStr = `FREE · ${freeSpeed.toFixed(2)}×`; 
+                else if(reverseMode) modeStr = `REWIND · ${motorSpeed.toFixed(1)}x`; 
+                else if(motorSpeed===2.0) modeStr = 'FFWD · 2.0×'; 
+                else modeStr = 'PLAY · 1.0×'; 
+            } 
+            $smode.textContent = modeStr; 
+            $wst.textContent = isFree ? 'FREE SPIN' : (isPlaying?(reverseMode?'REV MOTOR':'MOTOR ENGAGED'):'MOTOR STOPPED'); 
+        } 
+
+        function doMotor(spd){ 
+            if(!abuf){ setStatus('NO TAPE LOADED'); return; } 
+            initCtx(); isPlaying=true; motorSpeed=Math.abs(spd); reverseMode=false; stopFwd(); stopRev(); 
+            if(spd<0){ startRev(head, Math.abs(spd)); reverseMode=true; } else { startFwd(head, spd); } 
+            updateBtns(); 
+        } 
+
+        $bplay.addEventListener('click',()=>{ if(isFree)return; doMotor(1.0); setStatus('PLAY'); }); 
+
+        /* FIXED: DOUBLE-CLICK / SECOND-CLICK TOGGLE TO NORMAL PLAYBACK */
+        $bffwd.addEventListener('click',()=>{ 
+            if(isFree)return; 
+            if(isPlaying && motorSpeed === 2.0 && !reverseMode) { 
+                doMotor(1.0); setStatus('PLAY'); 
+            } else { 
+                doMotor(2.0); setStatus('FAST FORWARD'); 
+            } 
+        }); 
+
+        $brew.addEventListener('click',()=>{ 
+            if(isFree) return; 
+            if(!abuf){ setStatus('NO TAPE LOADED'); return; } 
+            initCtx(); 
+            if(isPlaying && reverseMode && motorSpeed === 0.5) { 
+                doMotor(1.0); setStatus('PLAY'); 
+            } else { 
+                isPlaying = true; motorSpeed = 0.5; reverseMode = true; 
+                stopFwd(); startRev(head, 0.5); updateBtns(); setStatus('REWIND · 0.5×'); 
+            } 
+        }); 
+
+        $bpause.addEventListener('click',()=>{ if(!abuf) return; isPlaying=false; stopFwd(); stopRev(); updateBtns(); setStatus('PAUSED'); }); 
+
+        $bfree.addEventListener('click',()=>{ 
+            if(!abuf && !isFree){ setStatus('LOAD TAPE FIRST'); return; } 
+            isFree = !isFree; 
+            if(isFree){ 
+                freeSpeed = Math.max(0.01, motorSpeed>0?motorSpeed:1.0); 
+                if(isPlaying){ stopFwd(); stopRev(); startFwd(head, freeSpeed); } 
+                setStatus('FREE SPIN MODE'); 
+            } else { 
+                motorSpeed = Math.max(0, Math.min(2.0, freeSpeed)); 
+                if(isPlaying){ stopFwd(); stopRev(); if(motorSpeed>0) startFwd(head, motorSpeed); } 
+                setStatus(`SPEED LOCKED · ${motorSpeed.toFixed(2)}×`); 
+            } 
+            updateBtns(); 
+        }); 
+
+        function updateSpdBar(){ 
+            const s = isFree?freeSpeed:Math.max(0,motorSpeed); 
+            document.getElementById('spd-fill').style.width = (s/2*100)+'%'; 
+            document.getElementById('spd-val').textContent = s.toFixed(2)+'×'; 
+        } 
+
+        const cvL = document.getElementById('canvas-l'); const cvR = document.getElementById('canvas-r'); 
+        const cx2L = cvL.getContext('2d'); const cx2R = cvR.getContext('2d'); 
+        const FFT_SIZE = 512; const BIN_COUNT = FFT_SIZE / 2; const NUM_BARS = 48; const PEAK_HOLD = 60; const PEAK_FALL = 0.4; 
+        const peakL = new Float32Array(NUM_BARS); const peakR = new Float32Array(NUM_BARS); 
+        const peakHoldL = new Int16Array(NUM_BARS).fill(0); const peakHoldR = new Int16Array(NUM_BARS).fill(0); 
+        const freqL = new Uint8Array(BIN_COUNT); const freqR = new Uint8Array(BIN_COUNT); 
+        const timeL = new Float32Array(FFT_SIZE); const timeR = new Float32Array(FFT_SIZE); 
+        const smoothL = new Float32Array(NUM_BARS); const smoothR = new Float32Array(NUM_BARS); 
+        const SMOOTH_ATK = 0.85; const SMOOTH_REL = 0.12; 
+
+        const binRanges = (function(){ 
+            const ranges = []; const minFreq = 20, maxFreq = 20000; 
+            for(let i = 0; i < NUM_BARS; i++){ 
+                const f0 = minFreq * Math.pow(maxFreq/minFreq, i / NUM_BARS); const f1 = minFreq * Math.pow(maxFreq/minFreq, (i+1) / NUM_BARS); 
+                const b0 = Math.max(0, Math.round(f0 * FFT_SIZE / 44100)); const b1 = Math.min(BIN_COUNT-1, Math.round(f1 * FFT_SIZE / 44100)); 
+                ranges.push([Math.min(b0,b1), Math.max(b0,b1)+1]); 
+            } return ranges; 
+        })(); 
+
+        function rebuildBinRanges(sampleRate){ 
+            const minFreq = 20, maxFreq = Math.min(20000, sampleRate/2); 
+            for(let i=0;i<NUM_BARS;i++){ 
+                const f0 = minFreq*Math.pow(maxFreq/minFreq, i /NUM_BARS); const f1 = minFreq*Math.pow(maxFreq/minFreq,(i+1) /NUM_BARS); 
+                const b0 = Math.max(0,Math.round(f0*FFT_SIZE/sampleRate)); const b1 = Math.min(BIN_COUNT-1,Math.round(f1*FFT_SIZE/sampleRate)); 
+                binRanges[i] = [Math.min(b0,b1),Math.max(b0,b1)+1]; 
+            } 
+        } 
+
+        function barColor(amp){ 
+            if(amp < 0.5){ const t = amp * 2; const r = Math.round(255 * t); const g = Math.round(255 - 3*t); const b = Math.round(204 * (1-t)); return `rgb(${r},${Math.max(g,180)},${b})`; } 
+            else { const t = (amp - 0.5) * 2; const r = 255; const g = Math.round(238 * (1-t) * 0.5); return `rgb(${r},${Math.max(0,g)},0)`; } 
+        } 
+
+        function drawChannel(canvas, ctx, freqData, smooth, peaks, peakHolds, peakElId){ 
+            const W = canvas.width; const H = canvas.height; ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H); 
+            ctx.strokeStyle = '#151515'; ctx.lineWidth = 1; 
+            [0, 0.25, 0.5, 0.75, 1.0].forEach(t => { const y = Math.round(t * (H-1)) + 0.5; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }); 
+            if(!isPlaying || !analL){ 
+                for(let i=0;i<NUM_BARS;i++){ smooth[i] = Math.max(0, smooth[i]-0.04); peaks[i] = Math.max(0, peaks[i]-0.02); peakHolds[i] = 0; } 
+            } else { 
+                for(let i=0;i<NUM_BARS;i++){ 
+                    const [b0,b1] = binRanges[i]; let mx = 0; for(let b=b0;b<b1;b++) mx = Math.max(mx, freqData[b]); 
+                    const amp = mx/255; 
+                    if(amp > smooth[i]) smooth[i] = smooth[i]*SMOOTH_ATK + amp*(1-SMOOTH_ATK); else smooth[i] = smooth[i]*(1-SMOOTH_REL) + amp*SMOOTH_REL; 
+                    if(smooth[i] >= peaks[i]){ peaks[i] = smooth[i]; peakHolds[i] = PEAK_HOLD; } 
+                    else { if(peakHolds[i]>0) peakHolds[i]--; else peaks[i] = Math.max(0, peaks[i]-PEAK_FALL/H); } 
+                } 
+            } 
+            const barW = W / NUM_BARS; const gap = Math.max(1, barW * 0.18); const drawW = barW - gap; 
+            for(let i=0;i<NUM_BARS;i++){ 
+                const amp = smooth[i]; if(amp < 0.001) continue; 
+                const x = i * barW; const barH = amp * H; const y = H - barH; 
+                const grad = ctx.createLinearGradient(0, H, 0, 0); grad.addColorStop(0, barColor(0.1)); grad.addColorStop(0.6, barColor(0.55)); grad.addColorStop(0.85,barColor(0.8)); grad.addColorStop(1, barColor(1.0)); 
+                ctx.fillStyle = grad; ctx.fillRect(x, y, drawW, barH); 
+                if(peaks[i]>0.01){ const py = H - peaks[i]*H - 2; ctx.fillStyle = barColor(peaks[i]); ctx.fillRect(x, Math.max(0,py), drawW, 2); } 
+            } 
+            let maxAmp = 0; for(let i=0;i<NUM_BARS;i++) maxAmp = Math.max(maxAmp,smooth[i]); 
+            const dbfs = maxAmp>0.0001 ? 20*Math.log10(maxAmp) : -Infinity; 
+            const $pk = document.getElementById(peakElId); 
+            if(isPlaying && maxAmp>0.0001){ $pk.textContent = (dbfs>=0?'+':'')+dbfs.toFixed(1)+'dB'; $pk.style.color = dbfs>-3 ? '#ff5500' : dbfs>-12 ? '#ffaa00' : 'var(--cyan)'; } 
+            else { $pk.textContent = '-∞'; $pk.style.color = 'var(--gray2)'; } 
+        } 
+
+        function drawCorrelation(){ 
+            if(!analL || !isPlaying){ document.getElementById('corr-fill').style.left='50%'; document.getElementById('corr-fill').style.width='0%'; document.getElementById('corr-val').textContent='---'; return; } 
+            analL.getFloatTimeDomainData(timeL); analR.getFloatTimeDomainData(timeR); 
+            const N = timeL.length; let sumL=0, sumR=0; for(let i=0;i<N;i++){ sumL+=timeL[i]; sumR+=timeR[i]; } 
+            const mL = sumL/N, mR = sumR/N; let num=0, denL=0, denR=0; 
+            for(let i=0;i<N;i++){ const dl = timeL[i]-mL, dr = timeR[i]-mR; num+=dl*dr; denL+=dl*dl; denR+=dr*dr; } 
+            const corr = (denL*denR>0) ? num/Math.sqrt(denL*denR) : 0; const c = Math.max(-1, Math.min(1, corr)); 
+            const pct = (c+1)/2; 
+            if(c>=0){ document.getElementById('corr-fill').style.left = '50%'; document.getElementById('corr-fill').style.width = (pct - 0.5)*100+'%'; document.getElementById('corr-fill').style.background = 'var(--cyan)'; } 
+            else { document.getElementById('corr-fill').style.left = pct*100+'%'; document.getElementById('corr-fill').style.width = (0.5-pct)*100+'%'; document.getElementById('corr-fill').style.background = '#ff5500'; } 
+            document.getElementById('corr-val').textContent = c.toFixed(2); 
+        } 
+
+        function updateAnalyzer(){ 
+            const dpr = Math.min(window.devicePixelRatio||1, 2); 
+            [cvL, cvR].forEach(cv=>{ const rect = cv.getBoundingClientRect(); const W = Math.round(rect.width * dpr); const H = Math.round(rect.height * dpr); if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; } }); 
+            if(analL){ analL.getByteFrequencyData(freqL); analR.getByteFrequencyData(freqR); if(abuf) rebuildBinRanges(actx.sampleRate); } 
+            drawChannel(cvL, cx2L, freqL, smoothL, peakL, peakHoldL, 'peak-l'); drawChannel(cvR, cx2R, freqR, smoothR, peakR, peakHoldR, 'peak-r'); drawCorrelation(); 
+        } 
+
+        const $wc = document.getElementById('wave-canvas'); const ctx2 = $wc.getContext('2d'); let waveArr=null; 
+        function buildWave(buf){ 
+            const ch = buf.getChannelData(0); const N = 500, step = Math.floor(ch.length/N); waveArr = new Float32Array(N); 
+            for(let i=0;i<N;i++){ let mx=0; for(let j=0;j<step;j++) mx = Math.max(mx,Math.abs(ch[i*step+j])); waveArr[i] = mx; } drawWave(); 
+        } 
+
+        function drawWave(){ 
+            const W = $wc.width, H = $wc.height; ctx2.clearRect(0,0,W,H); ctx2.fillStyle = '#090909'; ctx2.fillRect(0,0,W,H); 
+            if(!waveArr) return; const bw = W/waveArr.length; ctx2.fillStyle = '#2c2c2c'; 
+            for(let i=0;i<waveArr.length;i++){ const a = waveArr[i]*H*0.44; ctx2.fillRect(i*bw, H/2-a, Math.max(1,bw-0.5), a*2); } 
+        } 
+
+        function drawHead(){ 
+            if(!waveArr||trackDur===0) return; drawWave(); const W = $wc.width, H = $wc.height; const x = (head/trackDur)*W; 
+            ctx2.fillStyle = 'rgba(255,85,0,0.15)'; ctx2.fillRect(0,0,x,H); ctx2.fillStyle = 'rgba(255,85,0,0.3)'; 
+            for(let i=0;i<Math.floor(x/($wc.width/waveArr.length));i++){ const bw = $wc.width/waveArr.length; const a = waveArr[i]*H*0.44; ctx2.fillRect(i*bw,H/2-a,Math.max(1,bw-0.5),a*2); } 
+            ctx2.fillStyle = '#ff5500'; ctx2.fillRect(x-1,0,2,H); 
+        } 
+
+        $wc.addEventListener('click',e=>{ 
+            if(!abuf) return; initCtx(); const r = $wc.getBoundingClientRect(); head = Math.max(0,Math.min(trackDur,(e.clientX-r.left)/r.width*trackDur)); 
+            if(isPlaying){ stopFwd(); stopRev(); startFwd(head, isFree?Math.max(0.01,freeSpeed):Math.max(0.01,motorSpeed)); } 
+            odoSet(head); drawHead(); 
+        }); 
+
+        const $dz = document.getElementById('drop-zone'); const $fi = document.getElementById('file-input'); const $tn = document.getElementById('tname'); const $dzt = document.getElementById('dzt'); 
+        $dz.addEventListener('click',()=>$fi.click()); 
+        $fi.addEventListener('change',e=>{ if(e.target.files[0]) loadAudio(e.target.files[0]); }); 
+        
+        $dz.addEventListener('dragover',e=>{ e.preventDefault(); $dz.classList.add('over'); }); 
+        $dz.addEventListener('dragleave',()=>$dz.classList.remove('over')); 
+        $dz.addEventListener('drop',e=>{ e.preventDefault(); $dz.classList.remove('over'); if(e.dataTransfer.files[0]) loadAudio(e.dataTransfer.files[0]); }); 
+
+        function loadAudio(file){ 
+            if(!file.type.startsWith('audio/')&&!file.name.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i)){ setStatus('INVALID FORMAT'); return; } 
+            initCtx(); isPlaying=false; isFree=false; head=0; stopFwd(); stopRev(); abuf=null; waveArr=null; trackDur=0; updateBtns(); drawWave(); odoSet(0); 
+            const name = file.name.replace(/\.[^/.]+$/,'').toUpperCase().slice(0,40); $tn.textContent = name; $dzt.textContent = 'LOADING TAPE...'; setStatus('DECODING AUDIO...'); 
+            const fr = new FileReader(); 
+            fr.onload = ev=>{ 
+                actx.decodeAudioData(ev.target.result.slice(0), buf=>{ abuf=buf; trackDur=buf.duration; $dz.classList.add('loaded'); $dzt.textContent='TAPE READY'; buildWave(buf); setStatus('READY'); updateBtns(); }, ()=>{ setStatus('DECODE ERROR'); }); 
+            }; fr.readAsArrayBuffer(file); 
+        } 
+
+        odoSet(0); updateSpdBar(); updateBtns(); setStatus('STANDBY · LOAD TAPE'); 
+    })(); 
+    </script> 
+</body> 
 </html>
