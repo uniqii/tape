@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>TP-7 DIY Emulator</title>
+    <title>TP-7 DIY Pre-Rendered Reverse Emulator</title>
     <style>
         body {
             background-color: #161616;
@@ -19,12 +19,38 @@
             user-select: none;
             -webkit-user-select: none;
         }
+        
+        .layout-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
         .container {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 40px;
+            transition: all 0.3s ease;
         }
+
+        .container.mobile-mode {
+            flex-direction: column-reverse;
+            gap: 20px;
+        }
+        .container.mobile-mode .side-buttons {
+            flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 320px;
+        }
+        .container.mobile-mode button {
+            min-width: 90px;
+            padding: 10px 10px;
+            font-size: 0.8rem;
+        }
+
         .side-buttons {
             display: flex;
             flex-direction: column;
@@ -96,19 +122,26 @@
             font-size: 0.9rem;
             color: #666;
             font-family: monospace;
+            text-align: center;
+            max-width: 90%;
         }
         #fileInputContainer {
-            margin-bottom: 25px;
+            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
 
+    <div class="layout-bar">
+        <span>Screen Mode:</span>
+        <button id="btnToggleLayout" style="min-width: auto; padding: 6px 12px; font-size: 0.8rem;">Switch to Mobile UI</button>
+    </div>
+
     <div id="fileInputContainer">
         <input type="file" id="audioFile" accept="audio/*">
     </div>
 
-    <div class="container">
+    <div class="container" id="mainContainer">
         <div class="side-buttons">
             <button id="btnPlay">PLAY</button>
             <button id="btnPause">PAUSE</button>
@@ -119,101 +152,156 @@
 
         <div class="wheel-area">
             <div class="tape-display" id="timerDisplay">00:00.00</div>
-
             <div id="wheel">
                 <div id="marker"></div>
             </div>
         </div>
     </div>
 
-    <div id="status">Upload an audio track to activate the physical tape core.</div>
+    <div id="status">Upload an audio track. Dual pre-rendered buffers active.</div>
 
     <script>
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        let audioBuffer = null;
-        let sourceNode = null;
+        let forwardBuffer = null;
+        let reverseBuffer = null;
+        let currentSourceNode = null;
         
-        // State variables
         let isPlaying = false;
         let currentPlaybackRate = 1.0;
         let targetPlaybackRate = 1.0;
         let isFreeSpinMode = false;
         let manualSpeedSetting = 1.0;
+        let isCurrentlyReverseNode = false;
         
-        // Timer & Playhead calculations
         let trackPlayheadTime = 0; 
-        
-        // Wheel Rotation Animation vars
         let wheelRotation = 0; 
         let lastAnimationFrameTime = performance.now();
+        let nodeStartTimeContext = 0;
+        let nodeStartTimePlayhead = 0;
 
-        // Touch tracking vars
         let isInteracting = false;
         let lastAngle = 0;
         let lastTouchTime = Date.now();
 
-        // UI elements
+        const container = document.getElementById('mainContainer');
         const wheel = document.getElementById('wheel');
         const status = document.getElementById('status');
         const fileInput = document.getElementById('audioFile');
         const timerDisplay = document.getElementById('timerDisplay');
         
-        // Buttons
         const btnPlay = document.getElementById('btnPlay');
         const btnPause = document.getElementById('btnPause');
         const btnFF = document.getElementById('btnFF');
         const btnRW = document.getElementById('btnRW');
         const btnFree = document.getElementById('btnFree');
+        const btnToggleLayout = document.getElementById('btnToggleLayout');
+
+        btnToggleLayout.addEventListener('click', () => {
+            container.classList.toggle('mobile-mode');
+            btnToggleLayout.innerText = container.classList.contains('mobile-mode') ? "Switch to PC UI" : "Switch to Mobile UI";
+        });
 
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-
-            status.innerText = "SYS: Caching audio matrix...";
-            const arrayBuffer = await file.arrayBuffer();
-            audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            status.innerText = "SYS: Buffer Online.";
+            status.innerText = "SYS: Allocating dual-memory tape reels...";
             
+            const arrayBuffer = await file.arrayBuffer();
+            forwardBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            // PRE-RENDER REVERSE BUFFER: Create an exact clone, then flip array structures
+            const duration = forwardBuffer.duration;
+            const sampleRate = forwardBuffer.sampleRate;
+            const numChannels = forwardBuffer.numberOfChannels;
+            
+            reverseBuffer = audioContext.createBuffer(numChannels, forwardBuffer.length, sampleRate);
+            
+            for (let channel = 0; channel < numChannels; channel++) {
+                const fwdData = forwardBuffer.getChannelData(channel);
+                const revData = reverseBuffer.getChannelData(channel);
+                for (let i = 0, len = forwardBuffer.length; i < len; i++) {
+                    revData[i] = fwdData[len - 1 - i];
+                }
+            }
+            
+            status.innerText = "SYS: Mirrored reverse cache built successfully.";
             trackPlayheadTime = 0;
-            initAudioEngine();
+            if(isPlaying) updateAudioNodeEngine();
         });
 
-        function initAudioEngine() {
-            if (sourceNode) { try { sourceNode.stop(); } catch(e){} }
-
-            sourceNode = audioContext.createBufferSource();
-            sourceNode.buffer = audioBuffer;
-            sourceNode.loop = true;
-
-            sourceNode.connect(audioContext.destination);
-            sourceNode.playbackRate.value = currentPlaybackRate;
+        // Smart Hot-Swapping Engine
+        function updateAudioNodeEngine() {
+            if (!forwardBuffer) return;
             
-            if (isPlaying) {
-                sourceNode.start(0);
+            // Clean up running nodes
+            if (currentSourceNode) {
+                try { currentSourceNode.stop(); currentSourceNode.disconnect(); } catch(e){}
             }
+
+            // Detect if rate calculation implies a direction swap
+            const needsReverse = currentPlaybackRate < 0;
+            
+            currentSourceNode = audioContext.createBufferSource();
+            
+            if (needsReverse) {
+                currentSourceNode.buffer = reverseBuffer;
+                isCurrentlyReverseNode = true;
+                // Target mirror position: Duration minus where we currently stand
+                let mirrorTime = forwardBuffer.duration - trackPlayheadTime;
+                if(mirrorTime < 0) mirrorTime = 0;
+                nodeStartTimePlayhead = trackPlayheadTime;
+                nodeStartTimeContext = audioContext.currentTime;
+                currentSourceNode.start(0, mirrorTime);
+            } else {
+                currentSourceNode.buffer = forwardBuffer;
+                isCurrentlyReverseNode = false;
+                nodeStartTimePlayhead = trackPlayheadTime;
+                nodeStartTimeContext = audioContext.currentTime;
+                currentSourceNode.start(0, trackPlayheadTime);
+            }
+
+            currentSourceNode.connect(audioContext.destination);
+            // Always feed absolute positive speeds to the native handler!
+            currentSourceNode.playbackRate.setValueAtTime(Math.abs(currentPlaybackRate), audioContext.currentTime);
         }
 
-        // Real-Time Motor and Text Animation Loop
+        // Clock Render and Variable Motor Loop
         function animationLoop(now) {
             const deltaTime = (now - lastAnimationFrameTime) / 1000;
             lastAnimationFrameTime = now;
 
-            if (isPlaying) {
+            if (isPlaying && forwardBuffer) {
                 if (!isInteracting) {
                     // Smooth motor transitions
+                    let oldRate = currentPlaybackRate;
                     currentPlaybackRate += (targetPlaybackRate - currentPlaybackRate) * 0.1;
-                    if (sourceNode) {
-                        sourceNode.playbackRate.setValueAtTime(currentPlaybackRate, audioContext.currentTime);
+                    
+                    // Direction changes require hot-swapping buffers on the fly
+                    if ((oldRate >= 0 && currentPlaybackRate < 0) || (oldRate < 0 && currentPlaybackRate >= 0)) {
+                        updateAudioNodeEngine();
+                    } else if (currentSourceNode) {
+                        currentSourceNode.playbackRate.setValueAtTime(Math.abs(currentPlaybackRate), audioContext.currentTime);
                     }
                 }
 
-                // Update playhead time based on current rate
-                trackPlayheadTime += deltaTime * currentPlaybackRate;
-                if (trackPlayheadTime < 0) trackPlayheadTime = 0;
+                // Track continuous timeline playhead position
+                if (currentSourceNode && !isInteracting) {
+                    const elapsedContextTime = audioContext.currentTime - nodeStartTimeContext;
+                    if (isCurrentlyReverseNode) {
+                        trackPlayheadTime = nodeStartTimePlayhead - (elapsedContextTime * Math.abs(currentPlaybackRate));
+                    } else {
+                        trackPlayheadTime = nodeStartTimePlayhead + (elapsedContextTime * Math.abs(currentPlaybackRate));
+                    }
+                } else {
+                    trackPlayheadTime += deltaTime * currentPlaybackRate;
+                }
+
+                // Loop boundaries logic
+                if (trackPlayheadTime < 0) trackPlayheadTime = forwardBuffer.duration;
+                if (trackPlayheadTime > forwardBuffer.duration) trackPlayheadTime = 0;
 
                 updateClockDisplay(trackPlayheadTime);
 
-                // Spin the wheel matching the precise playback speed
                 const baseSpinSpeed = 2.5; 
                 wheelRotation += baseSpinSpeed * currentPlaybackRate * deltaTime;
                 wheel.style.transform = `rotate(${wheelRotation}rad)`;
@@ -227,33 +315,25 @@
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             const hundredths = Math.floor((seconds % 1) * 100);
-
-            const mStr = mins.toString().padStart(2, '0');
-            const sStr = secs.toString().padStart(2, '0');
-            const hStr = hundredths.toString().padStart(2, '0');
-
-            timerDisplay.innerText = `${mStr}:${sStr}.${hStr}`;
+            timerDisplay.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${hundredths.toString().padStart(2, '0')}`;
         }
 
-        // Button Click Interactivity
         btnPlay.addEventListener('click', () => {
-            if (!audioBuffer) return;
+            if (!forwardBuffer) return;
+            audioContext.resume();
             isFreeSpinMode = false;
             btnFree.classList.remove('active');
-            
-            if (!isPlaying) {
-                isPlaying = true;
-                targetPlaybackRate = 1.0;
-                initAudioEngine();
-                sourceNode.start(0);
-            } else {
-                targetPlaybackRate = 1.0;
-            }
+            isPlaying = true;
+            targetPlaybackRate = 1.0;
+            updateAudioNodeEngine();
             status.innerText = "SYS: Playback Normal (1.0x)";
         });
 
         btnPause.addEventListener('click', () => {
+            isPlaying = false;
             targetPlaybackRate = 0.0;
+            currentPlaybackRate = 0.0;
+            if (currentSourceNode) { try{currentSourceNode.stop();}catch(e){} }
             status.innerText = "SYS: Paused Motor";
         });
 
@@ -266,46 +346,40 @@
         btnRW.addEventListener('click', () => {
             if (!isPlaying) return;
             targetPlaybackRate = -2.0; 
-            status.innerText = "SYS: Rewinding (-2.0x)";
+            status.innerText = "SYS: Pre-rendered Reverse Triggered (-2.0x)";
         });
 
-        // 2-in-1 Toggle Button (Dial Speed / Lock Speed)
         btnFree.addEventListener('click', () => {
             if (!isPlaying) return;
-            
             isFreeSpinMode = !isFreeSpinMode;
-            
             if (isFreeSpinMode) {
-                // Step 1: Activate Dial Mode
                 btnFree.classList.add('active');
-                manualSpeedSetting = currentPlaybackRate; // Start dialing from current speed
-                status.innerText = "MODE: Free Spin. Dial speed with wheel, click FREE SPIN again to LOCK.";
+                manualSpeedSetting = currentPlaybackRate;
+                status.innerText = "MODE: Free Spin. Dial speed, click FREE SPIN again to LOCK.";
             } else {
-                // Step 2: Lock & Commit Speed Settings
                 btnFree.classList.remove('active');
                 targetPlaybackRate = manualSpeedSetting;
-                status.innerText = `SYS: Locked new motorized speed setting at ${targetPlaybackRate.toFixed(2)}x`;
+                updateAudioNodeEngine();
+                status.innerText = `SYS: Locked motorized speed at ${targetPlaybackRate.toFixed(2)}x`;
             }
         });
 
-        // Touch Geometry Logic
         function getAngle(clientX, clientY) {
             const rect = wheel.getBoundingClientRect();
-            const x = clientX - (rect.left + rect.width / 2);
-            const y = clientY - (rect.top + rect.height / 2);
-            return Math.atan2(y, x);
+            return Math.atan2(clientY - (rect.top + rect.height / 2), clientX - (rect.left + rect.width / 2));
         }
 
         function handleStart(e) {
-            if (!audioBuffer || !isPlaying) return;
-            isInteracting = true;
+            if (!forwardBuffer || !isPlaying) return;
+            audioContext.resume();
+            isInteracting = true; 
             const touch = e.touches ? e.touches[0] : e;
             lastAngle = getAngle(touch.clientX, touch.clientY);
             lastTouchTime = Date.now();
         }
 
         function handleMove(e) {
-            if (!isInteracting || !audioBuffer) return;
+            if (!isInteracting || !forwardBuffer) return;
             
             const touch = e.touches ? e.touches[0] : e;
             const currentAngle = getAngle(touch.clientX, touch.clientY);
@@ -318,32 +392,40 @@
             if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
             if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
+            wheelRotation += angleDiff;
+            wheel.style.transform = `rotate(${wheelRotation}rad)`;
+
+            const angularVelocity = angleDiff / deltaTime;
+            let oldRate = currentPlaybackRate;
+
             if (isFreeSpinMode) {
-                const angularVelocity = angleDiff / deltaTime;
-                
-                // Spin clockwise = increase speed, Counter-clockwise = decrease speed
-                manualSpeedSetting += (angularVelocity * 0.05);
+                manualSpeedSetting += (angularVelocity * 0.03);
                 manualSpeedSetting = Math.max(-3.0, Math.min(4.0, manualSpeedSetting));
-                
                 currentPlaybackRate = manualSpeedSetting;
-                sourceNode.playbackRate.setValueAtTime(currentPlaybackRate, audioContext.currentTime);
-                status.innerText = `DIALING SPEED: ${currentPlaybackRate.toFixed(2)}x (Click Free Spin to Lock)`;
             } else {
-                // Classic Live Analog Scratching Functionality
-                const angularVelocity = angleDiff / deltaTime;
-                let scratchRate = angularVelocity * 0.25;
+                let scratchRate = angularVelocity * 0.20;
                 currentPlaybackRate = Math.max(-4.0, Math.min(4.0, scratchRate));
-                sourceNode.playbackRate.setValueAtTime(currentPlaybackRate, audioContext.currentTime);
             }
+
+            // Scratch direction calculation checks
+            if ((oldRate >= 0 && currentPlaybackRate < 0) || (oldRate < 0 && currentPlaybackRate >= 0)) {
+                updateAudioNodeEngine();
+            } else if (currentSourceNode) {
+                currentSourceNode.playbackRate.setValueAtTime(Math.abs(currentPlaybackRate), audioContext.currentTime);
+            }
+            
+            status.innerText = `HAND CONTROL: ${currentPlaybackRate.toFixed(2)}x`;
 
             lastAngle = currentAngle;
             lastTouchTime = now;
         }
 
         function handleEnd() {
-            isInteracting = false;
+            if (!isInteracting) return;
+            isInteracting = false; 
             if (!isFreeSpinMode && isPlaying) {
-                currentPlaybackRate = targetPlaybackRate;
+                targetPlaybackRate = 1.0; 
+                updateAudioNodeEngine();
             }
         }
 
