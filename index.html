@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>DIY Tape Buffer Emulator</title>
+    <style>
+        body {
+            background-color: #111;
+            color: #fff;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        #wheel {
+            width: 280px;
+            height: 280px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #333 30%, #222 60%, #000 100%);
+            border: 4px solid #ff5500;
+            box-shadow: 0 0 20px rgba(255, 85, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            touch-action: none;
+        }
+        #marker {
+            width: 20px;
+            height: 20px;
+            background-color: #ff5500;
+            border-radius: 50%;
+            position: absolute;
+            top: 20px;
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 1.2rem;
+            color: #aaa;
+        }
+        input[type="file"] {
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+
+    <input type="file" id="audioFile" accept="audio/*">
+    <div id="wheel">
+        <div id="marker"></div>
+    </div>
+    <div id="status">Upload an audio file to start</div>
+
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let audioBuffer = null;
+        let sourceNode = null;
+        
+        const wheel = document.getElementById('wheel');
+        const marker = document.getElementById('marker');
+        const status = document.getElementById('status');
+        const fileInput = document.getElementById('audioFile');
+
+        let isInteracting = false;
+        let lastAngle = 0;
+        let currentRotation = 0;
+        let lastTime = Date.now();
+
+        // 1. Load Audio File straight into fast RAM Buffer
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            status.innerText = "Loading into RAM...";
+            const arrayBuffer = await file.arrayBuffer();
+            
+            // This decodes the whole file immediately into memory
+            audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            status.innerText = "Loaded! Spin the wheel.";
+            
+            startPlayback();
+        });
+
+        function startPlayback() {
+            if (sourceNode) sourceNode.stop();
+            
+            sourceNode = audioContext.createBufferSource();
+            sourceNode.buffer = audioBuffer;
+            sourceNode.loop = true;
+            
+            // Connect to phone speakers
+            sourceNode.connect(audioContext.destination);
+            sourceNode.playbackRate.value = 1.0; // Start at normal speed
+            sourceNode.start(0);
+        }
+
+        // 2. Track high-efficiency touch angles to mimic physical encoder
+        function getAngle(clientX, clientY) {
+            const rect = wheel.getBoundingClientRect();
+            const x = clientX - (rect.left + rect.width / 2);
+            const y = clientY - (rect.top + rect.height / 2);
+            return Math.atan2(y, x);
+        }
+
+        function handleStart(e) {
+            if (!audioBuffer) return;
+            isInteracting = true;
+            const touch = e.touches ? e.touches[0] : e;
+            lastAngle = getAngle(touch.clientX, touch.clientY);
+            lastTime = Date.now();
+        }
+
+        function handleMove(e) {
+            if (!isInteracting || !audioBuffer) return;
+            
+            const touch = e.touches ? e.touches[0] : e;
+            const currentAngle = getAngle(touch.clientX, touch.clientY);
+            const now = Date.now();
+            const deltaTime = (now - lastTime) / 1000; // in seconds
+
+            if (deltaTime === 0) return;
+
+            // Calculate angular velocity (how fast you are spinning it)
+            let angleDiff = currentAngle - lastAngle;
+            
+            // Handle wrap-around jumps (-PI to PI)
+            if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+            const angularVelocity = angleDiff / deltaTime;
+
+            // 3. Map wheel speed directly to Web Audio playback rate
+            // Base value adjusted to make a normal spin equal roughly 1x speed
+            let targetPlaybackRate = angularVelocity * 0.25; 
+
+            // Clamp maximum speeds to avoid completely blowing out speakers
+            if (targetPlaybackRate > 4) targetPlaybackRate = 4;
+            if (targetPlaybackRate < -4) targetPlaybackRate = -4;
+
+            // Update Audio Engine Instantly
+            sourceNode.playbackRate.setValueAtTime(targetPlaybackRate, audioContext.currentTime);
+
+            // Visually rotate the digital wheel
+            currentRotation += angleDiff;
+            wheel.style.transform = `rotate(${currentRotation}rad)`;
+
+            // Update logic loop trackers
+            lastAngle = currentAngle;
+            lastTime = now;
+            
+            status.innerText = `Playback Rate: ${targetPlaybackRate.toFixed(2)}x`;
+        }
+
+        function handleEnd() {
+            isInteracting = false;
+            // Return to normal 1x speed when you let go, like a motorized tape catching up
+            if (sourceNode && audioBuffer) {
+                sourceNode.playbackRate.behavior = 'exponential';
+                sourceNode.playbackRate.setTargetAtTime(1.0, audioContext.currentTime, 0.3);
+                status.innerText = "Playing (1.0x)";
+            }
+        }
+
+        // Setup Event Listeners for Mobile Touch and Desktop Mouse
+        wheel.addEventListener('touchstart', handleStart);
+        window.addEventListener('touchmove', handleMove, { passive: false });
+        window.addEventListener('touchend', handleEnd);
+
+        wheel.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+    </script>
+</body>
+</html>
