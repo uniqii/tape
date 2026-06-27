@@ -51,8 +51,7 @@
         
         #spd-wrap{width:100%;padding:0 2px} 
         #spd-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--gray2)} 
-        #spd-track{width:100%;height:4px;background:var(--gray);margin:4px 0;position:relative;overflow:hidden} 
-        #spd-fill{height:100%;background:var(--accent);width:50%;transition:width .06s linear} 
+        #spd-track"><div id="spd-fill"></div></div> 
         #spd-val{font-family:var(--mono);font-size:11px;color:var(--cyan);text-shadow:0 0 6px var(--cyan);text-align:right} 
         
         #upload-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:10px} 
@@ -141,10 +140,10 @@
                 </div> 
 
                 <div id="btn-grid"> 
-                    <button class="cbtn" id="btn-play">▶ PLAY</button> 
-                    <button class="cbtn" id="btn-pause">⏸ PAUSE</button> 
-                    <button class="cbtn" id="btn-ffwd">⏩ FFWD</button> 
-                    <button class="cbtn" id="btn-rew">⏪ REW</button> 
+                    <button class="cbtn" id="btn-play">▶</button> 
+                    <button class="cbtn" id="btn-pause">■</button> 
+                    <button class="cbtn" id="btn-ffwd">▶▶</button> 
+                    <button class="cbtn" id="btn-rew">R◀</button> 
                     <button class="cbtn" id="btn-free">⊙ FREE</button> 
                 </div> 
 
@@ -220,7 +219,18 @@
         const $odo = document.getElementById('odometer'); 
         const strips = []; 
 
+        // MECHANICAL STRIP LAYOUT CONFIGURATIONS WITH LOOP-BACK BUFFER TERMINATIONS
+        const odoLayouts = [
+            [0,1,2,3,4,5,6,7,8,9,0], // Hours Tens (H1)
+            [0,1,2,3,4,5,6,7,8,9,0], // Hours Units (H0)
+            [0,1,2,3,4,5,0],         // Minutes Tens (M1)
+            [0,1,2,3,4,5,6,7,8,9,0], // Minutes Units (M0)
+            [0,1,2,3,4,5,0],         // Seconds Tens (S1)
+            [0,1,2,3,4,5,6,7,8,9,0]  // Seconds Units (S0)
+        ];
+
         (function buildOdo(){ 
+            let stripIdx = 0;
             [0,1,'s',2,3,'s',4,5].forEach(s=>{ 
                 if(s==='s'){ 
                     const sep = document.createElement('div'); 
@@ -231,31 +241,61 @@
                 wrap.className = 'odo-wrap'; 
                 const strip = document.createElement('div'); 
                 strip.className = 'odo-strip'; 
-                for(let d=0;d<10;d++){ 
+                
+                // Construct sequence directly from configured layout maps
+                const currentLayout = odoLayouts[stripIdx];
+                currentLayout.forEach(digit=>{
                     const c = document.createElement('div'); 
-                    c.className = 'odo-cell'; c.textContent = d; 
+                    c.className = 'odo-cell'; c.textContent = digit; 
                     strip.appendChild(c); 
-                } 
+                });
+                
                 wrap.appendChild(strip); $odo.appendChild(wrap); 
                 strips.push(strip); 
+                stripIdx++;
             }); 
         })(); 
 
-        // PURE MECHANICAL LINEAR ODOMETER CONFIGURATION
+        // TRUE GEARED LINEAR ODOMETER TIMELINE COUPLING
         function odoSet(totalSec){ 
             totalSec = Math.max(0, totalSec); 
-            const h = (totalSec / 3600) % 100; 
-            const m = ((totalSec % 3600) / 60) % 60; 
-            const s = (totalSec % 60) % 60; 
             
-            // Numbers move exactly proportional to your tape timeline position frame-by-frame
+            // Seconds Unit (S0) - Moves continuously 100% of the time
+            let s0 = totalSec % 10;
+            
+            // Seconds Tens (S1) - Synchronized transition window over the final 9->0 turn
+            let s1_base = Math.floor((totalSec % 60) / 10);
+            let s1 = s1_base + (s0 > 9 ? (s0 - 9) : 0);
+            
+            // Minutes Unit (M0) - Pulls upward synchronously over the final second (59.0 -> 60.0)
+            let m_raw = totalSec / 60;
+            let m0_base = Math.floor(m_raw % 10);
+            let s_rem = totalSec % 60; 
+            let m0 = m0_base + (s_rem > 59 ? (s_rem - 59) : 0);
+            
+            // Minutes Tens (M1) - Synchronized window over the final 9->0 minute roll
+            let m1_base = Math.floor((m_raw % 60) / 10);
+            let m0_rem = m_raw % 10;
+            let m1 = m1_base + (m0_rem > 9 ? (m0_rem - 9) : 0);
+            
+            // Hours Unit (H0) - Pulls upward over the final minute roll (59.0 -> 60.0)
+            let h_raw = m_raw / 60;
+            let h0_base = Math.floor(h_raw % 10);
+            let m_rem = m_raw % 60;
+            let h0 = h0_base + (m_rem > 59 ? (m_rem - 59) : 0);
+            
+            // Hours Tens (H1) - Synchronized carry window over the final 9->0 hour roll
+            let h1_base = Math.floor((h_raw % 100) / 10);
+            let h0_rem = h_raw % 10;
+            let h1 = h1_base + (h0_rem > 9 ? (h0_rem - 9) : 0);
+            
             const vals = [
-                (h / 10) % 10,
-                h % 10,
-                (m / 10) % 10,
-                m % 10,
-                (s / 10) % 10,
-                s % 10
+                h1 % 10,
+                h0 % 10,
+                m1 % 6,
+                m0 % 10,
+                s1 % 6,
+                s0
             ]; 
             
             vals.forEach((v, i) => { 
@@ -300,7 +340,7 @@
         let actx=null, abuf=null, trackDur=0; 
         let isPlaying = false; let isFree = false; 
         let motorSpeed = 1.0; let freeSpeed = 1.0; 
-        let savedSpeed = 1.0; // PERSISTENT MEMORY SPEED CACHE REGISTER
+        let savedSpeed = 1.0; 
         let reverseMode = false; let head = 0.0; 
         let fwdNode = null; let fwdCtxStart = 0; let fwdHeadStart = 0; let fwdRate = 1.0; 
         let revRunning = false; let revPos = 0; let revSpd = 1.0; let revNextStart = 0; let revTimer = null; 
@@ -583,6 +623,36 @@
         function barColor(amp){ 
             if(amp < 0.5){ const t = amp * 2; const r = Math.round(255 * t); const g = Math.round(255 - 3*t); const b = Math.round(204 * (1-t)); return `rgb(${r},${Math.max(g,180)},${b})`; } 
             else { const t = (amp - 0.5) * 2; const r = 255; const g = Math.round(238 * (1-t) * 0.5); return `rgb(${r},${Math.max(0,g)},0)`; } 
+        } 
+
+        function drawChannel(canvas, ctx, freqData, smooth, peaks, peakHolds, peakElId){ 
+            const W = canvas.width; const H = canvas.height; ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H); 
+            ctx.strokeStyle = '#151515'; ctx.lineWidth = 1; 
+            [0, 0.25, 0.5, 0.75, 1.0].forEach(t => { const y = Math.round(t * (H-1)) + 0.5; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }); 
+            if(!isPlaying || !analL){ 
+                for(let i=0;i<NUM_BARS;i++){ smooth[i] = Math.max(0, smooth[i]-0.04); peaks[i] = Math.max(0, peaks[i]-0.02); peakHolds[i] = 0; } 
+            } else { 
+                for(let i=0;i<NUM_BARS;i++){ 
+                    const [b0,b1] = binRanges[i]; let mx = 0; for(let b=b0;b<b1;b++) mx = Math.max(mx, freqData[b]); 
+                    const amp = mx/255; 
+                    if(amp > smooth[i]) smooth[i] = smooth[i]*SMOOTH_ATK + amp*(1-SMOOTH_ATK); else smooth[i] = smooth[i]*(1-SMOOTH_REL) + amp*SMOOTH_REL; 
+                    if(smooth[i] >= peaks[i]){ peaks[i] = smooth[i]; peakHolds[i] = PEAK_HOLD; } 
+                    else { if(peakHolds[i]>0) peakHolds[i]--; else peaks[i] = Math.max(0, peaks[i]-PEAK_FALL/H); } 
+                } 
+            } 
+            const barW = W / NUM_BARS; const gap = Math.max(1, barW * 0.18); const drawW = barW - gap; 
+            for(let i=0;i<NUM_BARS;i++){ 
+                const amp = smooth[i]; if(amp < 0.001) continue; 
+                const x = i * barW; const barH = amp * H; const y = H - barH; 
+                const grad = ctx.createLinearGradient(0, H, 0, 0); grad.addColorStop(0, barColor(0.1)); grad.addColorStop(0.6, barColor(0.55)); grad.addColorStop(0.85,barColor(0.8)); grad.addColorStop(1, barColor(1.0)); 
+                ctx.fillStyle = grad; ctx.fillRect(x, y, drawW, barH); 
+                if(peaks[i]>0.01){ const py = H - peaks[i]*H - 2; ctx.fillStyle = barColor(peaks[i]); ctx.fillRect(x, Math.max(0,py), drawW, 2); } 
+            } 
+            let maxAmp = 0; for(let i=0;i<NUM_BARS;i++) maxAmp = Math.max(maxAmp,smooth[i]); 
+            const dbfs = maxAmp>0.0001 ? 20*Math.log10(maxAmp) : -Infinity; 
+            const $pk = document.getElementById(peakElId); 
+            if(isPlaying && maxAmp>0.0001){ $pk.textContent = (dbfs>=0?'+':'')+dbfs.toFixed(1)+'dB'; $pk.style.color = dbfs>-3 ? '#ff5500' : dbfs>-12 ? '#ffaa00' : 'var(--cyan)'; } 
+            else { $pk.textContent = '-∞'; $pk.style.color = 'var(--gray2)'; } 
         } 
 
         function drawChannel(canvas, ctx, freqData, smooth, peaks, peakHolds, peakElId){ 
