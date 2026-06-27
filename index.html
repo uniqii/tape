@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>DIY Tape Buffer Emulator</title>
+    <title>TP-7 DIY Emulator</title>
     <style>
         body {
-            background-color: #111;
+            background-color: #161616;
             color: #fff;
-            font-family: sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -16,14 +16,53 @@
             height: 100vh;
             margin: 0;
             overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+        }
+        .side-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        button {
+            background-color: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 12px 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            min-width: 120px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: background 0.1s;
+        }
+        button:active {
+            background-color: #444;
+        }
+        button.active {
+            background-color: #ff5500;
+            border-color: #ff7733;
+        }
+        .wheel-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
         }
         #wheel {
-            width: 280px;
-            height: 280px;
+            width: 260px;
+            height: 260px;
             border-radius: 50%;
-            background: radial-gradient(circle, #333 30%, #222 60%, #000 100%);
-            border: 4px solid #ff5500;
-            box-shadow: 0 0 20px rgba(255, 85, 0, 0.4);
+            background: radial-gradient(circle, #2d2d2d 30%, #1a1a1a 70%, #0a0a0a 100%);
+            border: 6px solid #333;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -31,75 +70,225 @@
             touch-action: none;
         }
         #marker {
-            width: 20px;
-            height: 20px;
+            width: 16px;
+            height: 16px;
             background-color: #ff5500;
             border-radius: 50%;
             position: absolute;
-            top: 20px;
+            top: 15px;
+        }
+        .tape-display {
+            background-color: #000;
+            border: 2px solid #333;
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.8rem;
+            color: #00ffcc;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            letter-spacing: 2px;
+            min-width: 160px;
+            text-align: center;
+            box-shadow: inset 0 0 8px rgba(0,0,0,0.8);
         }
         #status {
-            margin-top: 20px;
-            font-size: 1.2rem;
-            color: #aaa;
+            margin-top: 30px;
+            font-size: 0.9rem;
+            color: #666;
+            font-family: monospace;
         }
-        input[type="file"] {
-            margin-bottom: 30px;
+        #fileInputContainer {
+            margin-bottom: 25px;
         }
     </style>
 </head>
 <body>
 
-    <input type="file" id="audioFile" accept="audio/*">
-    <div id="wheel">
-        <div id="marker"></div>
+    <div id="fileInputContainer">
+        <input type="file" id="audioFile" accept="audio/*">
     </div>
-    <div id="status">Upload an audio file to start</div>
+
+    <div class="container">
+        <div class="side-buttons">
+            <button id="btnPlay">PLAY</button>
+            <button id="btnPause">PAUSE</button>
+            <button id="btnFF">FFWD</button>
+            <button id="btnRW">REWIND</button>
+            <button id="btnFree">FREE SPIN</button>
+        </div>
+
+        <div class="wheel-area">
+            <div class="tape-display" id="timerDisplay">00:00.00</div>
+
+            <div id="wheel">
+                <div id="marker"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="status">Upload an audio track to activate the physical tape core.</div>
 
     <script>
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         let audioBuffer = null;
         let sourceNode = null;
         
-        const wheel = document.getElementById('wheel');
-        const marker = document.getElementById('marker');
-        const status = document.getElementById('status');
-        const fileInput = document.getElementById('audioFile');
+        // State variables
+        let isPlaying = false;
+        let currentPlaybackRate = 1.0;
+        let targetPlaybackRate = 1.0;
+        let isFreeSpinMode = false;
+        let manualSpeedSetting = 1.0;
+        
+        // Timer & Playhead calculations
+        let trackPlayheadTime = 0; 
+        
+        // Wheel Rotation Animation vars
+        let wheelRotation = 0; 
+        let lastAnimationFrameTime = performance.now();
 
+        // Touch tracking vars
         let isInteracting = false;
         let lastAngle = 0;
-        let currentRotation = 0;
-        let lastTime = Date.now();
+        let lastTouchTime = Date.now();
 
-        // 1. Load Audio File straight into fast RAM Buffer
+        // UI elements
+        const wheel = document.getElementById('wheel');
+        const status = document.getElementById('status');
+        const fileInput = document.getElementById('audioFile');
+        const timerDisplay = document.getElementById('timerDisplay');
+        
+        // Buttons
+        const btnPlay = document.getElementById('btnPlay');
+        const btnPause = document.getElementById('btnPause');
+        const btnFF = document.getElementById('btnFF');
+        const btnRW = document.getElementById('btnRW');
+        const btnFree = document.getElementById('btnFree');
+
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
-            status.innerText = "Loading into RAM...";
+            status.innerText = "SYS: Caching audio matrix...";
             const arrayBuffer = await file.arrayBuffer();
-            
-            // This decodes the whole file immediately into memory
             audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            status.innerText = "Loaded! Spin the wheel.";
+            status.innerText = "SYS: Buffer Online.";
             
-            startPlayback();
+            trackPlayheadTime = 0;
+            initAudioEngine();
         });
 
-        function startPlayback() {
-            if (sourceNode) sourceNode.stop();
-            
+        function initAudioEngine() {
+            if (sourceNode) { try { sourceNode.stop(); } catch(e){} }
+
             sourceNode = audioContext.createBufferSource();
             sourceNode.buffer = audioBuffer;
             sourceNode.loop = true;
-            
-            // Connect to phone speakers
+
             sourceNode.connect(audioContext.destination);
-            sourceNode.playbackRate.value = 1.0; // Start at normal speed
-            sourceNode.start(0);
+            sourceNode.playbackRate.value = currentPlaybackRate;
+            
+            if (isPlaying) {
+                sourceNode.start(0);
+            }
         }
 
-        // 2. Track high-efficiency touch angles to mimic physical encoder
+        // Real-Time Motor and Text Animation Loop
+        function animationLoop(now) {
+            const deltaTime = (now - lastAnimationFrameTime) / 1000;
+            lastAnimationFrameTime = now;
+
+            if (isPlaying) {
+                if (!isInteracting) {
+                    // Smooth motor transitions
+                    currentPlaybackRate += (targetPlaybackRate - currentPlaybackRate) * 0.1;
+                    if (sourceNode) {
+                        sourceNode.playbackRate.setValueAtTime(currentPlaybackRate, audioContext.currentTime);
+                    }
+                }
+
+                // Update playhead time based on current rate
+                trackPlayheadTime += deltaTime * currentPlaybackRate;
+                if (trackPlayheadTime < 0) trackPlayheadTime = 0;
+
+                updateClockDisplay(trackPlayheadTime);
+
+                // Spin the wheel matching the precise playback speed
+                const baseSpinSpeed = 2.5; 
+                wheelRotation += baseSpinSpeed * currentPlaybackRate * deltaTime;
+                wheel.style.transform = `rotate(${wheelRotation}rad)`;
+            }
+
+            requestAnimationFrame(animationLoop);
+        }
+        requestAnimationFrame(animationLoop);
+
+        function updateClockDisplay(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            const hundredths = Math.floor((seconds % 1) * 100);
+
+            const mStr = mins.toString().padStart(2, '0');
+            const sStr = secs.toString().padStart(2, '0');
+            const hStr = hundredths.toString().padStart(2, '0');
+
+            timerDisplay.innerText = `${mStr}:${sStr}.${hStr}`;
+        }
+
+        // Button Click Interactivity
+        btnPlay.addEventListener('click', () => {
+            if (!audioBuffer) return;
+            isFreeSpinMode = false;
+            btnFree.classList.remove('active');
+            
+            if (!isPlaying) {
+                isPlaying = true;
+                targetPlaybackRate = 1.0;
+                initAudioEngine();
+                sourceNode.start(0);
+            } else {
+                targetPlaybackRate = 1.0;
+            }
+            status.innerText = "SYS: Playback Normal (1.0x)";
+        });
+
+        btnPause.addEventListener('click', () => {
+            targetPlaybackRate = 0.0;
+            status.innerText = "SYS: Paused Motor";
+        });
+
+        btnFF.addEventListener('click', () => {
+            if (!isPlaying) return;
+            targetPlaybackRate = 3.0; 
+            status.innerText = "SYS: Fast Forwarding (3.0x)";
+        });
+
+        btnRW.addEventListener('click', () => {
+            if (!isPlaying) return;
+            targetPlaybackRate = -2.0; 
+            status.innerText = "SYS: Rewinding (-2.0x)";
+        });
+
+        // 2-in-1 Toggle Button (Dial Speed / Lock Speed)
+        btnFree.addEventListener('click', () => {
+            if (!isPlaying) return;
+            
+            isFreeSpinMode = !isFreeSpinMode;
+            
+            if (isFreeSpinMode) {
+                // Step 1: Activate Dial Mode
+                btnFree.classList.add('active');
+                manualSpeedSetting = currentPlaybackRate; // Start dialing from current speed
+                status.innerText = "MODE: Free Spin. Dial speed with wheel, click FREE SPIN again to LOCK.";
+            } else {
+                // Step 2: Lock & Commit Speed Settings
+                btnFree.classList.remove('active');
+                targetPlaybackRate = manualSpeedSetting;
+                status.innerText = `SYS: Locked new motorized speed setting at ${targetPlaybackRate.toFixed(2)}x`;
+            }
+        });
+
+        // Touch Geometry Logic
         function getAngle(clientX, clientY) {
             const rect = wheel.getBoundingClientRect();
             const x = clientX - (rect.left + rect.width / 2);
@@ -108,11 +297,11 @@
         }
 
         function handleStart(e) {
-            if (!audioBuffer) return;
+            if (!audioBuffer || !isPlaying) return;
             isInteracting = true;
             const touch = e.touches ? e.touches[0] : e;
             lastAngle = getAngle(touch.clientX, touch.clientY);
-            lastTime = Date.now();
+            lastTouchTime = Date.now();
         }
 
         function handleMove(e) {
@@ -121,56 +310,46 @@
             const touch = e.touches ? e.touches[0] : e;
             const currentAngle = getAngle(touch.clientX, touch.clientY);
             const now = Date.now();
-            const deltaTime = (now - lastTime) / 1000; // in seconds
+            const deltaTime = (now - lastTouchTime) / 1000;
 
             if (deltaTime === 0) return;
 
-            // Calculate angular velocity (how fast you are spinning it)
             let angleDiff = currentAngle - lastAngle;
-            
-            // Handle wrap-around jumps (-PI to PI)
             if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
             if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-            const angularVelocity = angleDiff / deltaTime;
+            if (isFreeSpinMode) {
+                const angularVelocity = angleDiff / deltaTime;
+                
+                // Spin clockwise = increase speed, Counter-clockwise = decrease speed
+                manualSpeedSetting += (angularVelocity * 0.05);
+                manualSpeedSetting = Math.max(-3.0, Math.min(4.0, manualSpeedSetting));
+                
+                currentPlaybackRate = manualSpeedSetting;
+                sourceNode.playbackRate.setValueAtTime(currentPlaybackRate, audioContext.currentTime);
+                status.innerText = `DIALING SPEED: ${currentPlaybackRate.toFixed(2)}x (Click Free Spin to Lock)`;
+            } else {
+                // Classic Live Analog Scratching Functionality
+                const angularVelocity = angleDiff / deltaTime;
+                let scratchRate = angularVelocity * 0.25;
+                currentPlaybackRate = Math.max(-4.0, Math.min(4.0, scratchRate));
+                sourceNode.playbackRate.setValueAtTime(currentPlaybackRate, audioContext.currentTime);
+            }
 
-            // 3. Map wheel speed directly to Web Audio playback rate
-            // Base value adjusted to make a normal spin equal roughly 1x speed
-            let targetPlaybackRate = angularVelocity * 0.25; 
-
-            // Clamp maximum speeds to avoid completely blowing out speakers
-            if (targetPlaybackRate > 4) targetPlaybackRate = 4;
-            if (targetPlaybackRate < -4) targetPlaybackRate = -4;
-
-            // Update Audio Engine Instantly
-            sourceNode.playbackRate.setValueAtTime(targetPlaybackRate, audioContext.currentTime);
-
-            // Visually rotate the digital wheel
-            currentRotation += angleDiff;
-            wheel.style.transform = `rotate(${currentRotation}rad)`;
-
-            // Update logic loop trackers
             lastAngle = currentAngle;
-            lastTime = now;
-            
-            status.innerText = `Playback Rate: ${targetPlaybackRate.toFixed(2)}x`;
+            lastTouchTime = now;
         }
 
         function handleEnd() {
             isInteracting = false;
-            // Return to normal 1x speed when you let go, like a motorized tape catching up
-            if (sourceNode && audioBuffer) {
-                sourceNode.playbackRate.behavior = 'exponential';
-                sourceNode.playbackRate.setTargetAtTime(1.0, audioContext.currentTime, 0.3);
-                status.innerText = "Playing (1.0x)";
+            if (!isFreeSpinMode && isPlaying) {
+                currentPlaybackRate = targetPlaybackRate;
             }
         }
 
-        // Setup Event Listeners for Mobile Touch and Desktop Mouse
         wheel.addEventListener('touchstart', handleStart);
         window.addEventListener('touchmove', handleMove, { passive: false });
         window.addEventListener('touchend', handleEnd);
-
         wheel.addEventListener('mousedown', handleStart);
         window.addEventListener('mousemove', handleMove);
         window.addEventListener('mouseup', handleEnd);
