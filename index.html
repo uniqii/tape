@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"> 
     <title>TP-7 TAPE EMULATOR</title> 
     <style> 
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap'); 
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0} 
         :root{ 
-            --bg:#161616;--bg2:#1e1e1e;--bg3:#242424; 
+            --bg:#161616;--bg2:#1e1e1e;--bg3:#242424;
             --accent:#ff5500;--cyan:#00ffcc;--cyan-d:#00aa88; 
             --gray:#3a3a3a;--gray2:#555;--text:#aaaaaa; 
             --mono:'Share Tech Mono',monospace;--ui:'Rajdhani',sans-serif; 
@@ -32,7 +32,6 @@
         #main-container.mob #right-panel{width:100%;max-width:340px;flex:unset} 
         .slabel{font-family:var(--mono);font-size:8px;letter-spacing:3px;color:var(--gray2);text-transform:uppercase;margin-bottom:8px} 
         
-        /* ODOMETER WITH PURE FRAME-BY-FRAME LINEAR MOVEMENT */
         #clock-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:12px;display:flex;flex-direction:column;align-items:center;position:relative} 
         #clock-panel::after{content:'';position:absolute;left:0;right:0;bottom:0;height:14px;background:linear-gradient(transparent,#090909);pointer-events:none;z-index:3} 
         #clock-panel::before{content:'';position:absolute;left:0;right:0;top:0;height:14px;background:linear-gradient(#090909,transparent);pointer-events:none;z-index:3} 
@@ -51,7 +50,8 @@
         
         #spd-wrap{width:100%;padding:0 2px} 
         #spd-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--gray2)} 
-        #spd-track"><div id="spd-fill"></div></div> 
+        #spd-track{width:100%;height:4px;background:#090909;border:1px solid var(--gray);margin:5px 0;position:relative;overflow:hidden}
+        #spd-fill{position:absolute;top:0;left:0;height:100%;width:50%;background:var(--cyan);box-shadow:0 0 6px var(--cyan);transition:width .1s ease} 
         #spd-val{font-family:var(--mono);font-size:11px;color:var(--cyan);text-shadow:0 0 6px var(--cyan);text-align:right} 
         
         #upload-panel{width:100%;background:#090909;border:1px solid var(--gray);padding:10px} 
@@ -141,22 +141,22 @@
 
                 <div id="btn-grid"> 
                     <button class="cbtn" id="btn-play">▶</button> 
-                    <button class="cbtn" id="btn-pause">■</button> 
+                    <button class="cbtn on" id="btn-pause">■</button> 
                     <button class="cbtn" id="btn-ffwd">▶▶</button> 
                     <button class="cbtn" id="btn-rew">R◀</button> 
                     <button class="cbtn" id="btn-free">⊙ FREE</button> 
                 </div> 
 
                 <div id="spd-wrap"> 
-                    <div id="spd-labels"><span>0.0×</span><span>SPEED METRIC</span><span>2.0×</span></div> 
+                    <div id="spd-labels"><span>-5.0×</span><span>SPEED METRIC</span><span>+5.0×</span></div> 
                     <div id="spd-track"><div id="spd-fill"></div></div> 
-                    <div id="spd-val">1.00×</div> 
+                    <div id="spd-val">0.00×</div> 
                 </div> 
             </div> 
 
             <div id="right-panel"> 
                 <div id="clock-panel" class="panel"> 
-                    <div class="slabel">TAPE POSITION</div> 
+                    <div class="slabel">TAPE POSITION (HH:MM:SS)</div> 
                     <div id="odometer"></div> 
                 </div> 
                 <div id="wave-panel" class="panel"> 
@@ -183,7 +183,8 @@
                         <div class="ch-wrap"> 
                             <div class="ch-label-row"> 
                                 <span class="ch-peak" id="peak-r" style="text-align:left;min-width:36px">-∞</span> 
-                                <span class="ch-lbl">R</span> </div> 
+                                <span class="ch-lbl">R</span> 
+                            </div> 
                             <canvas class="ch-canvas" id="canvas-r" width="256" height="80"></canvas> 
                         </div> 
                     </div> 
@@ -203,38 +204,39 @@
 
     <script> 
     (function(){ 
-        'use strict'; 
+        'use strict';
         
+        // UI Toggles
         const $mc = document.getElementById('main-container'); 
         const $lt = document.getElementById('layout-toggle'); 
-        let mobView = false; 
+        let mobView = false;
         $lt.addEventListener('click',()=>{ 
             mobView = !mobView; 
             $mc.classList.toggle('pc',!mobView); 
             $mc.classList.toggle('mob',mobView); 
             $lt.textContent = mobView ? '◧ MOBILE UI' : '◫ PC UI'; 
-        }); 
+        });
 
+        // ODOMETER FIX: HH:MM:SS FORMAT
         const DIGH = 44; 
         const $odo = document.getElementById('odometer'); 
-        const strips = []; 
-
-        // MECHANICAL STRIP LAYOUT CONFIGURATIONS WITH LOOP-BACK BUFFER TERMINATIONS
+        const strips = [];
+        
         const odoLayouts = [
-            [0,1,2,3,4,5,6,7,8,9,0], // Hours Tens (H1)
-            [0,1,2,3,4,5,6,7,8,9,0], // Hours Units (H0)
-            [0,1,2,3,4,5,0],         // Minutes Tens (M1)
-            [0,1,2,3,4,5,6,7,8,9,0], // Minutes Units (M0)
-            [0,1,2,3,4,5,0],         // Seconds Tens (S1)
-            [0,1,2,3,4,5,6,7,8,9,0]  // Seconds Units (S0)
+            [0,1,2,3,4,5,6,7,8,9,0], // Hours Tens
+            [0,1,2,3,4,5,6,7,8,9,0], // Hours Units
+            [0,1,2,3,4,5,0],         // Minutes Tens
+            [0,1,2,3,4,5,6,7,8,9,0], // Minutes Units
+            [0,1,2,3,4,5,0],         // Seconds Tens
+            [0,1,2,3,4,5,6,7,8,9,0]  // Seconds Units
         ];
 
         (function buildOdo(){ 
             let stripIdx = 0;
-            [0,1,'s',2,3,'s',4,5].forEach(s=>{ 
-                if(s==='s'){ 
+            [0,1,':',2,3,':',4,5].forEach(s=>{ 
+                if(s===':'){ 
                     const sep = document.createElement('div'); 
-                    sep.className = 'odo-sep'; sep.textContent = ':'; 
+                    sep.className = 'odo-sep'; sep.textContent = s; 
                     $odo.appendChild(sep); return; 
                 } 
                 const wrap = document.createElement('div'); 
@@ -242,7 +244,6 @@
                 const strip = document.createElement('div'); 
                 strip.className = 'odo-strip'; 
                 
-                // Construct sequence directly from configured layout maps
                 const currentLayout = odoLayouts[stripIdx];
                 currentLayout.forEach(digit=>{
                     const c = document.createElement('div'); 
@@ -254,55 +255,45 @@
                 strips.push(strip); 
                 stripIdx++;
             }); 
-        })(); 
+            // Set initial zeroes
+            strips.forEach(s => s.style.transform = `translateY(0px)`);
+        })();
 
-        // TRUE GEARED LINEAR ODOMETER TIMELINE COUPLING
         function odoSet(totalSec){ 
-            totalSec = Math.max(0, totalSec); 
+            totalSec = Math.max(0, totalSec);
             
-            // Seconds Unit (S0) - Moves continuously 100% of the time
+            let s_raw = totalSec % 60;
             let s0 = totalSec % 10;
-            
-            // Seconds Tens (S1) - Synchronized transition window over the final 9->0 turn
-            let s1_base = Math.floor((totalSec % 60) / 10);
-            let s1 = s1_base + (s0 > 9 ? (s0 - 9) : 0);
-            
-            // Minutes Unit (M0) - Pulls upward synchronously over the final second (59.0 -> 60.0)
+            let s1_base = Math.floor(s_raw / 10);
+            let s1 = s1_base + (s0 > 9 ? s0 - 9 : 0);
+
             let m_raw = totalSec / 60;
             let m0_base = Math.floor(m_raw % 10);
-            let s_rem = totalSec % 60; 
-            let m0 = m0_base + (s_rem > 59 ? (s_rem - 59) : 0);
-            
-            // Minutes Tens (M1) - Synchronized window over the final 9->0 minute roll
+            let m0 = m0_base + (s_raw > 59 ? s_raw - 59 : 0);
             let m1_base = Math.floor((m_raw % 60) / 10);
             let m0_rem = m_raw % 10;
-            let m1 = m1_base + (m0_rem > 9 ? (m0_rem - 9) : 0);
-            
-            // Hours Unit (H0) - Pulls upward over the final minute roll (59.0 -> 60.0)
-            let h_raw = m_raw / 60;
+            let m1 = m1_base + (m0_rem > 9 ? m0_rem - 9 : 0);
+
+            let h_raw = totalSec / 3600;
             let h0_base = Math.floor(h_raw % 10);
             let m_rem = m_raw % 60;
-            let h0 = h0_base + (m_rem > 59 ? (m_rem - 59) : 0);
-            
-            // Hours Tens (H1) - Synchronized carry window over the final 9->0 hour roll
+            let h0 = h0_base + (m_rem > 59 ? m_rem - 59 : 0);
             let h1_base = Math.floor((h_raw % 100) / 10);
             let h0_rem = h_raw % 10;
-            let h1 = h1_base + (h0_rem > 9 ? (h0_rem - 9) : 0);
-            
+            let h1 = h1_base + (h0_rem > 9 ? h0_rem - 9 : 0);
+
             const vals = [
-                h1 % 10,
-                h0 % 10,
-                m1 % 6,
-                m0 % 10,
-                s1 % 6,
-                s0
-            ]; 
+                h1 % 10, h0 % 10,
+                m1 % 6, m0 % 10,
+                s1 % 6, s0 % 10
+            ];
             
             vals.forEach((v, i) => { 
                 strips[i].style.transform = `translateY(${-(v * DIGH)}px)`; 
-            }); 
+            });
         } 
 
+        // Aesthetic SVG setup
         (function buildWheel(){ 
             const gg = document.getElementById('grip-g'); 
             const n = 40, r = 113; 
@@ -321,435 +312,554 @@
                 const l = document.createElementNS('http://www.w3.org/2000/svg','line'); 
                 l.setAttribute('x1','120'); l.setAttribute('y1','120'); 
                 l.setAttribute('x2',x2.toFixed(1)); l.setAttribute('y2',y2.toFixed(1)); 
-                sg.appendChild(l); 
+                sg.appendChild(l);
             } 
-            const tg = document.getElementById('tick-g'); 
+            const tg = document.getElementById('tick-g');
             for(let i=0;i<24;i++){ 
-                const a = (i/24)*Math.PI*2; 
+                const a = (i/24)*Math.PI*2;
                 const r1 = 34, r2 = i%6===0?30:32; 
-                const x1 = 120+r1*Math.cos(a), y1 = 120+r1*Math.sin(a); 
+                const x1 = 120+r1*Math.cos(a), y1 = 120+r1*Math.sin(a);
                 const x2 = 120+r2*Math.cos(a), y2 = 120+r2*Math.sin(a); 
                 const l = document.createElementNS('http://www.w3.org/2000/svg','line'); 
                 l.setAttribute('x1',x1.toFixed(1)); l.setAttribute('y1',y1.toFixed(1)); 
                 l.setAttribute('x2',x2.toFixed(1)); l.setAttribute('y2',y2.toFixed(1)); 
                 l.setAttribute('stroke',i%6===0?'#333':'#1e1e1e'); 
-                tg.appendChild(l); 
+                tg.appendChild(l);
             } 
         })(); 
 
-        let actx=null, abuf=null, trackDur=0; 
-        let isPlaying = false; let isFree = false; 
-        let motorSpeed = 1.0; let freeSpeed = 1.0; 
-        let savedSpeed = 1.0; 
-        let reverseMode = false; let head = 0.0; 
-        let fwdNode = null; let fwdCtxStart = 0; let fwdHeadStart = 0; let fwdRate = 1.0; 
-        let revRunning = false; let revPos = 0; let revSpd = 1.0; let revNextStart = 0; let revTimer = null; 
-        let analL=null, analR=null, splitter=null; 
-
-        function initCtx(){ 
-            if(!actx){ 
-                actx = new(window.AudioContext||window.webkitAudioContext)(); 
-                buildAnalysers(); 
-            } 
-            if(actx.state==='suspended') actx.resume(); 
-        } 
-
-        function buildAnalysers(){ 
-            analL = actx.createAnalyser(); analL.fftSize = FFT_SIZE; analL.smoothingTimeConstant = 0.0; 
-            analR = actx.createAnalyser(); analR.fftSize = FFT_SIZE; analR.smoothingTimeConstant = 0.0; 
-            splitter = actx.createChannelSplitter(2); 
-            const merger = actx.createChannelMerger(2); 
-            splitter.connect(analL,0); splitter.connect(analR,1); 
-            analL.connect(merger,0,0); analR.connect(merger,0,1); 
-            merger.connect(actx.destination); 
-        } 
-
-        function stopFwd(){ 
-            if(fwdNode){ try{fwdNode.stop();}catch(e){} fwdNode.disconnect(); fwdNode=null; } 
-        } 
-
-        function startFwd(fromSec, rate){ 
-            stopFwd(); stopRev(); 
-            if(!abuf||!actx||rate<=0) return; 
-            const off = Math.max(0,Math.min(fromSec, trackDur-0.001)); 
-            const src = actx.createBufferSource(); 
-            src.buffer = abuf; src.playbackRate.value = rate; 
-            src.connect(splitter); src.start(0, off); 
-            fwdNode = src; fwdCtxStart = actx.currentTime; fwdHeadStart = off; fwdRate = rate; 
-            reverseMode = false; 
-            src.onended = () => { 
-                if(fwdNode===src){ 
-                    fwdNode = null; 
-                    if(isPlaying&&!isInteracting){ head = trackDur; isPlaying = false; setStatus('END OF TAPE'); updateBtns(); } 
-                } 
-            }; 
-        } 
-
-        function stopRev(){ revRunning = false; if(revTimer){ clearTimeout(revTimer); revTimer=null; } } 
-
-        function startRev(fromSec, speed){ 
-            stopFwd(); stopRev(); 
-            if(!abuf||!actx||fromSec<=0) return; 
-            revRunning = true; revPos = Math.min(fromSec, trackDur); revSpd = Math.max(0.05, speed); 
-            revNextStart = actx.currentTime; reverseMode = true; 
-            scheduleRevChunk(); 
-        } 
-
-        function scheduleRevChunk(){ 
-            if(!revRunning||!actx||!abuf) return; 
-            if(revPos<=0.001){ head=0; revRunning=false; isPlaying=false; setStatus('START OF TAPE · LOCK'); updateBtns(); return; } 
-            const AHEAD = 0.20; 
-            while(revNextStart < actx.currentTime + AHEAD){ 
-                const chunkSec = Math.min(0.15, revPos); 
-                const sr = abuf.sampleRate, ch = abuf.numberOfChannels; 
-                const s0 = Math.floor((revPos-chunkSec)*sr); const s1 = Math.floor(revPos*sr); 
-                const len = s1-s0; 
-                if(len<2){ revPos=0; revRunning=false; head=0; isPlaying=false; updateBtns(); return; } 
-                const rb = actx.createBuffer(ch,len,sr); 
-                for(let c=0;c<ch;c++){ 
-                    const inp = abuf.getChannelData(c).subarray(s0,s1); const out = rb.getChannelData(c); 
-                    for(let i=0;i<len;i++) out[i] = inp[len-1-i]; 
-                } 
-                const src = actx.createBufferSource(); 
-                src.buffer = rb; src.playbackRate.value = revSpd; src.connect(splitter); 
-                const playAt = Math.max(revNextStart, actx.currentTime); 
-                const dur = chunkSec/revSpd; 
-                src.start(playAt); src.stop(playAt+dur); 
-                revNextStart = playAt+dur; revPos -= chunkSec; 
-            } 
-            const delay = Math.max(15,(revNextStart - actx.currentTime - AHEAD)*1000); 
-            revTimer = setTimeout(scheduleRevChunk, delay); 
-        } 
-
-        let wheelAngle = 0; let lastTs = 0; 
-        const $wsvg = document.getElementById('wheel-svg'); 
-        const $wst = document.getElementById('wheel-status'); 
-
-        function raf(ts){ 
-            requestAnimationFrame(raf); 
-            const dt = lastTs?(ts-lastTs)/1000:0; lastTs = ts; 
-            if(!isInteracting && isPlaying && abuf){ 
-                const spd = isFree ? freeSpeed : motorSpeed; 
-                if(reverseMode && revRunning){ 
-                    head = Math.max(0, revPos + (revNextStart - actx.currentTime)*revSpd); 
-                } else if(fwdNode){ 
-                    head = fwdHeadStart + (actx.currentTime - fwdCtxStart)*fwdRate; 
-                    if(head>=trackDur) head=trackDur; 
-                } 
-                head = Math.max(0,Math.min(head,trackDur)); 
-                if(!isFree){ 
-                    const directionMultiplier = reverseMode ? -1 : 1; 
-                    wheelAngle += (spd * 200) * directionMultiplier * dt; 
-                } 
-            } 
-            odoSet(head); applyWheel(); updateSpdBar(); drawHead(); updateAnalyzer(); 
-        } 
-        requestAnimationFrame(raf); 
-
-        function applyWheel(){ $wsvg.style.transform=`rotate(${wheelAngle % 360}deg)`; } 
-
-        const $wo = document.getElementById('wheel-outer'); 
-        let isInteracting = false; let prevAng=null, angVel=0, prevTs2=0; let momentRaf=null; 
-
-        function evtAngle(e){ 
-            const r = $wo.getBoundingClientRect(); 
-            const cx = r.left+r.width/2, cy = r.top+r.height/2; 
-            const p = e.touches?e.touches[0]:e; 
-            return Math.atan2(p.clientY-cy, p.clientX-cx)*(180/Math.PI); 
-        } 
-
-        function wStart(e){ 
-            e.preventDefault(); initCtx(); isInteracting=true; prevAng=evtAngle(e); angVel=0; 
-            prevTs2 = performance.now(); 
-            if(momentRaf){cancelAnimationFrame(momentRaf);momentRaf=null;} 
-            $wo.classList.add('active'); stopFwd(); stopRev(); setStatus('CLUTCH ENGAGED'); 
-        } 
-
-        const DEG_SEC = 110; 
-        function wMove(e){ 
-            if(!isInteracting) return; e.preventDefault(); 
-            const ang = evtAngle(e); let d = ang-prevAng; 
-            if(d>180) d-=360; if(d<-180) d+=360; 
-            const now = performance.now(); const dtm = (now-prevTs2)||16; 
-            angVel = d/dtm*1000; prevTs2=now; wheelAngle+=d; 
-            if(isFree){ 
-                const ds = (d/360)*0.6; freeSpeed = Math.max(0,Math.min(2.0,freeSpeed+ds)); 
-            } else { 
-                const dt = d/DEG_SEC; head = Math.max(0,Math.min(trackDur,head+dt)); 
-            } 
-            prevAng=ang; 
-        } 
-
-        function wEnd(e){ 
-            if(!isInteracting) return; isInteracting=false; $wo.classList.remove('active'); 
-            if(isFree){ 
-                if(isPlaying && abuf){ startFwd(head, Math.max(0.01,freeSpeed)); } 
-                setStatus(`FREE SPEED · ${freeSpeed.toFixed(2)}×`); 
-            } else { 
-                if(isPlaying && abuf){ 
-                    head = Math.max(0,Math.min(trackDur,head)); 
-                    if(angVel < -25){ 
-                        const spd = Math.min(2.0, Math.abs(angVel)/DEG_SEC); startRev(head, spd); 
-                    } else { 
-                        startFwd(head, motorSpeed>0?motorSpeed:1.0); 
-                    } 
-                } 
-                setStatus(isPlaying?'PLAYING':'PAUSED'); 
-            } 
-            if(Math.abs(angVel)>30){ 
-                let v = angVel*0.008; 
-                function coast(){ v*=0.88; wheelAngle+=v; applyWheel(); if(Math.abs(v)>0.5) momentRaf=requestAnimationFrame(coast); } 
-                momentRaf = requestAnimationFrame(coast); 
-            } 
-        } 
-
-        $wo.addEventListener('mousedown', wStart, {passive:false}); $wo.addEventListener('touchstart', wStart, {passive:false}); 
-        window.addEventListener('mousemove', wMove, {passive:false}); window.addEventListener('touchmove', wMove, {passive:false}); 
-        window.addEventListener('mouseup', wEnd); window.addEventListener('touchend', wEnd); window.addEventListener('touchcancel',wEnd); 
-
-        const $bplay = document.getElementById('btn-play'); const $bpause = document.getElementById('btn-pause'); 
-        const $bffwd = document.getElementById('btn-ffwd'); const $brew = document.getElementById('btn-rew'); 
-        const $bfree = document.getElementById('btn-free'); const $smsg = document.getElementById('smsg'); 
-        const $smode = document.getElementById('smode'); 
+        // Core App Logic
+        let audioContext = null;
+        let audioBuffer = null;
+        let scriptNode = null;
         
-        function setStatus(t){ $smsg.textContent = t.toUpperCase(); } 
+        let isPlaying = false;
+        let currentPlaybackRate = 0.0;
+        let targetPlaybackRate = 0.0;
+        let baseSpeed = 1.0; 
+        let isFreeSpinMode = false;
 
-        function updateBtns(){ 
-            [$bplay,$bpause,$bffwd,$brew].forEach(b=>{b.classList.remove('on','lit');}); 
-            if(isPlaying){ 
-                if(motorSpeed===2.0 && !reverseMode) $bffwd.classList.add('lit'); 
-                else if(reverseMode && motorSpeed===0.5) $brew.classList.add('lit'); 
-                else if(!reverseMode) $bplay.classList.add('lit'); 
-            } 
-            $bfree.classList.toggle('on',isFree); 
-            let modeStr = 'STOPPED'; 
-            if(isPlaying){ 
-                if(isFree) modeStr = `FREE · ${freeSpeed.toFixed(2)}×`; 
-                else if(reverseMode) modeStr = `REWIND · ${motorSpeed.toFixed(1)}x`; 
-                else if(motorSpeed===2.0) modeStr = 'FFWD · 2.0×'; 
-                else modeStr = `PLAY · ${motorSpeed.toFixed(2)}×`; 
-            } 
-            $smode.textContent = modeStr; 
-            $wst.textContent = isFree ? 'FREE SPIN' : (isPlaying?(reverseMode?'REV MOTOR':'MOTOR ENGAGED'):'MOTOR STOPPED'); 
-        } 
+        let sampleFrameOffset = 0;
+        let leftChannelData = null;
+        let rightChannelData = null;
+        let totalSamples = 0;
+        let waveArr = null;
 
-        function doMotor(spd){ 
-            if(!abuf){ setStatus('NO TAPE LOADED'); return; } 
-            initCtx(); isPlaying=true; motorSpeed=Math.abs(spd); reverseMode=false; stopFwd(); stopRev(); 
-            if(spd<0){ startRev(head, Math.abs(spd)); reverseMode=true; } else { startFwd(head, spd); } 
-            updateBtns(); 
-        } 
+        let wheelRotation = 0;
+        let lastAnimationFrameTime = performance.now();
+        let isInteracting = false;
+        let lastAngle = 0;
+        let lastTouchTime = performance.now();
 
-        // SAVED SPEED PLAY RUNWAY ENGINE
-        $bplay.addEventListener('click',()=>{ 
-            if(isFree)return; 
-            doMotor(savedSpeed); 
-            setStatus(`PLAY · ${savedSpeed.toFixed(2)}×`); 
-        }); 
+        let analL = null, analR = null;
+        const FFT_SIZE = 256;
+        const NUM_BARS = 32;
+        let smoothL = new Float32Array(NUM_BARS);
+        let smoothR = new Float32Array(NUM_BARS);
+        let peakL = new Float32Array(NUM_BARS);
+        let peakR = new Float32Array(NUM_BARS);
+        let holdL = new Int32Array(NUM_BARS);
+        let holdR = new Int32Array(NUM_BARS);
 
-        $bffwd.addEventListener('click',()=>{ 
-            if(isFree)return; 
-            if(isPlaying && motorSpeed === 2.0 && !reverseMode) { 
-                doMotor(savedSpeed); setStatus('PLAY REVERT'); 
-            } else { 
-                doMotor(2.0); setStatus('FAST FORWARD'); 
-            } 
-        }); 
-
-        $brew.addEventListener('click',()=>{ 
-            if(isFree) return; 
-            if(!abuf){ setStatus('NO TAPE LOADED'); return; } 
-            initCtx(); 
-            if(isPlaying && reverseMode && motorSpeed === 0.5) { 
-                doMotor(savedSpeed); setStatus('PLAY REVERT'); 
-            } else { 
-                isPlaying = true; motorSpeed = 0.5; reverseMode = true; 
-                stopFwd(); startRev(head, 0.5); updateBtns(); setStatus('REWIND · 0.5×'); 
-            } 
-        }); 
-
-        $bpause.addEventListener('click',()=>{ if(!abuf) return; isPlaying=false; stopFwd(); stopRev(); updateBtns(); setStatus('PAUSED'); }); 
-
-        $bfree.addEventListener('click',()=>{ 
-            if(!abuf && !isFree){ setStatus('LOAD TAPE FIRST'); return; } 
-            isFree = !isFree; 
-            if(isFree){ 
-                freeSpeed = Math.max(0.01, motorSpeed>0?motorSpeed:1.0); 
-                if(isPlaying){ stopFwd(); stopRev(); startFwd(head, freeSpeed); } 
-                setStatus('FREE SPIN MODE'); 
-            } else { 
-                savedSpeed = Math.max(0.01, freeSpeed); 
-                motorSpeed = savedSpeed; 
-                if(isPlaying){ stopFwd(); stopRev(); if(motorSpeed>0) startFwd(head, motorSpeed); } 
-                setStatus(`SPEED MEMORY REGISTERED · ${savedSpeed.toFixed(2)}×`); 
-            } 
-            updateBtns(); 
-        }); 
-
-        function updateSpdBar(){ 
-            const s = isFree?freeSpeed:Math.max(0,motorSpeed); 
-            document.getElementById('spd-fill').style.width = (s/2*100)+'%'; 
-            document.getElementById('spd-val').textContent = s.toFixed(2)+'×'; 
-        } 
-
-        const cvL = document.getElementById('canvas-l'); const cvR = document.getElementById('canvas-r'); 
-        const cx2L = cvL.getContext('2d'); const cx2R = cvR.getContext('2d'); 
-        const FFT_SIZE = 512; const BIN_COUNT = FFT_SIZE / 2; const NUM_BARS = 48; const PEAK_HOLD = 60; const PEAK_FALL = 0.4; 
-        const peakL = new Float32Array(NUM_BARS); const peakR = new Float32Array(NUM_BARS); 
-        const peakHoldL = new Int16Array(NUM_BARS).fill(0); const peakHoldR = new Int16Array(NUM_BARS).fill(0); 
-        const freqL = new Uint8Array(BIN_COUNT); const freqR = new Uint8Array(BIN_COUNT); 
-        const timeL = new Float32Array(FFT_SIZE); const timeR = new Float32Array(FFT_SIZE); 
-        const smoothL = new Float32Array(NUM_BARS); const smoothR = new Float32Array(NUM_BARS); 
-        const SMOOTH_ATK = 0.85; const SMOOTH_REL = 0.12; 
-
-        const binRanges = (function(){ 
-            const ranges = []; const minFreq = 20, maxFreq = 20000; 
-            for(let i = 0; i < NUM_BARS; i++){ 
-                const f0 = minFreq * Math.pow(maxFreq/minFreq, i / NUM_BARS); const f1 = minFreq * Math.pow(maxFreq/minFreq, (i+1) / NUM_BARS); 
-                const b0 = Math.max(0, Math.round(f0 * FFT_SIZE / 44100)); const b1 = Math.min(BIN_COUNT-1, Math.round(f1 * FFT_SIZE / 44100)); 
-                ranges.push([Math.min(b0,b1), Math.max(b0,b1)+1]); 
-            } return ranges; 
-        })(); 
-
-        function rebuildBinRanges(sampleRate){ 
-            const minFreq = 20, maxFreq = Math.min(20000, sampleRate/2); 
-            for(let i=0;i<NUM_BARS;i++){ 
-                const f0 = minFreq*Math.pow(maxFreq/minFreq, i /NUM_BARS); const f1 = minFreq*Math.pow(maxFreq/minFreq,(i+1) /NUM_BARS); 
-                const b0 = Math.max(0,Math.round(f0*FFT_SIZE/sampleRate)); const b1 = Math.min(BIN_COUNT-1,Math.round(f1*FFT_SIZE/sampleRate)); 
-                binRanges[i] = [Math.min(b0,b1),Math.max(b0,b1)+1]; 
-            } 
-        } 
-
-        function barColor(amp){ 
-            if(amp < 0.5){ const t = amp * 2; const r = Math.round(255 * t); const g = Math.round(255 - 3*t); const b = Math.round(204 * (1-t)); return `rgb(${r},${Math.max(g,180)},${b})`; } 
-            else { const t = (amp - 0.5) * 2; const r = 255; const g = Math.round(238 * (1-t) * 0.5); return `rgb(${r},${Math.max(0,g)},0)`; } 
-        } 
-
-        function drawChannel(canvas, ctx, freqData, smooth, peaks, peakHolds, peakElId){ 
-            const W = canvas.width; const H = canvas.height; ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H); 
-            ctx.strokeStyle = '#151515'; ctx.lineWidth = 1; 
-            [0, 0.25, 0.5, 0.75, 1.0].forEach(t => { const y = Math.round(t * (H-1)) + 0.5; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }); 
-            if(!isPlaying || !analL){ 
-                for(let i=0;i<NUM_BARS;i++){ smooth[i] = Math.max(0, smooth[i]-0.04); peaks[i] = Math.max(0, peaks[i]-0.02); peakHolds[i] = 0; } 
-            } else { 
-                for(let i=0;i<NUM_BARS;i++){ 
-                    const [b0,b1] = binRanges[i]; let mx = 0; for(let b=b0;b<b1;b++) mx = Math.max(mx, freqData[b]); 
-                    const amp = mx/255; 
-                    if(amp > smooth[i]) smooth[i] = smooth[i]*SMOOTH_ATK + amp*(1-SMOOTH_ATK); else smooth[i] = smooth[i]*(1-SMOOTH_REL) + amp*SMOOTH_REL; 
-                    if(smooth[i] >= peaks[i]){ peaks[i] = smooth[i]; peakHolds[i] = PEAK_HOLD; } 
-                    else { if(peakHolds[i]>0) peakHolds[i]--; else peaks[i] = Math.max(0, peaks[i]-PEAK_FALL/H); } 
-                } 
-            } 
-            const barW = W / NUM_BARS; const gap = Math.max(1, barW * 0.18); const drawW = barW - gap; 
-            for(let i=0;i<NUM_BARS;i++){ 
-                const amp = smooth[i]; if(amp < 0.001) continue; 
-                const x = i * barW; const barH = amp * H; const y = H - barH; 
-                const grad = ctx.createLinearGradient(0, H, 0, 0); grad.addColorStop(0, barColor(0.1)); grad.addColorStop(0.6, barColor(0.55)); grad.addColorStop(0.85,barColor(0.8)); grad.addColorStop(1, barColor(1.0)); 
-                ctx.fillStyle = grad; ctx.fillRect(x, y, drawW, barH); 
-                if(peaks[i]>0.01){ const py = H - peaks[i]*H - 2; ctx.fillStyle = barColor(peaks[i]); ctx.fillRect(x, Math.max(0,py), drawW, 2); } 
-            } 
-            let maxAmp = 0; for(let i=0;i<NUM_BARS;i++) maxAmp = Math.max(maxAmp,smooth[i]); 
-            const dbfs = maxAmp>0.0001 ? 20*Math.log10(maxAmp) : -Infinity; 
-            const $pk = document.getElementById(peakElId); 
-            if(isPlaying && maxAmp>0.0001){ $pk.textContent = (dbfs>=0?'+':'')+dbfs.toFixed(1)+'dB'; $pk.style.color = dbfs>-3 ? '#ff5500' : dbfs>-12 ? '#ffaa00' : 'var(--cyan)'; } 
-            else { $pk.textContent = '-∞'; $pk.style.color = 'var(--gray2)'; } 
-        } 
-
-        function drawChannel(canvas, ctx, freqData, smooth, peaks, peakHolds, peakElId){ 
-            const W = canvas.width; const H = canvas.height; ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H); 
-            ctx.strokeStyle = '#151515'; ctx.lineWidth = 1; 
-            [0, 0.25, 0.5, 0.75, 1.0].forEach(t => { const y = Math.round(t * (H-1)) + 0.5; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }); 
-            if(!isPlaying || !analL){ 
-                for(let i=0;i<NUM_BARS;i++){ smooth[i] = Math.max(0, smooth[i]-0.04); peaks[i] = Math.max(0, peaks[i]-0.02); peakHolds[i] = 0; } 
-            } else { 
-                for(let i=0;i<NUM_BARS;i++){ 
-                    const [b0,b1] = binRanges[i]; let mx = 0; for(let b=b0;b<b1;b++) mx = Math.max(mx, freqData[b]); 
-                    const amp = mx/255; 
-                    if(amp > smooth[i]) smooth[i] = smooth[i]*SMOOTH_ATK + amp*(1-SMOOTH_ATK); else smooth[i] = smooth[i]*(1-SMOOTH_REL) + amp*SMOOTH_REL; 
-                    if(smooth[i] >= peaks[i]){ peaks[i] = smooth[i]; peakHolds[i] = PEAK_HOLD; } 
-                    else { if(peakHolds[i]>0) peakHolds[i]--; else peaks[i] = Math.max(0, peaks[i]-PEAK_FALL/H); } 
-                } 
-            } 
-            const barW = W / NUM_BARS; const gap = Math.max(1, barW * 0.18); const drawW = barW - gap; 
-            for(let i=0;i<NUM_BARS;i++){ 
-                const amp = smooth[i]; if(amp < 0.001) continue; 
-                const x = i * barW; const barH = amp * H; const y = H - barH; 
-                const grad = ctx.createLinearGradient(0, H, 0, 0); grad.addColorStop(0, barColor(0.1)); grad.addColorStop(0.6, barColor(0.55)); grad.addColorStop(0.85,barColor(0.8)); grad.addColorStop(1, barColor(1.0)); 
-                ctx.fillStyle = grad; ctx.fillRect(x, y, drawW, barH); 
-                if(peaks[i]>0.01){ const py = H - peaks[i]*H - 2; ctx.fillStyle = barColor(peaks[i]); ctx.fillRect(x, Math.max(0,py), drawW, 2); } 
-            } 
-            let maxAmp = 0; for(let i=0;i<NUM_BARS;i++) maxAmp = Math.max(maxAmp,smooth[i]); 
-            const dbfs = maxAmp>0.0001 ? 20*Math.log10(maxAmp) : -Infinity; 
-            const $pk = document.getElementById(peakElId); 
-            if(isPlaying && maxAmp>0.0001){ $pk.textContent = (dbfs>=0?'+':'')+dbfs.toFixed(1)+'dB'; $pk.style.color = dbfs>-3 ? '#ff5500' : dbfs>-12 ? '#ffaa00' : 'var(--cyan)'; } 
-            else { $pk.textContent = '-∞'; $pk.style.color = 'var(--gray2)'; } 
-        } 
-
-        function drawCorrelation(){ 
-            if(!analL || !isPlaying){ document.getElementById('corr-fill').style.left='50%'; document.getElementById('corr-fill').style.width='0%'; document.getElementById('corr-val').textContent='---'; return; } 
-            analL.getFloatTimeDomainData(timeL); analR.getFloatTimeDomainData(timeR); 
-            const N = timeL.length; let sumL=0, sumR=0; for(let i=0;i<N;i++){ sumL+=timeL[i]; sumR+=timeR[i]; } 
-            const mL = sumL/N, mR = sumR/N; let num=0, denL=0, denR=0; 
-            for(let i=0;i<N;i++){ const dl = timeL[i]-mL, dr = timeR[i]-mR; num+=dl*dr; denL+=dl*dl; denR+=dr*dr; } 
-            const corr = (denL*denR>0) ? num/Math.sqrt(denL*denR) : 0; const c = Math.max(-1, Math.min(1, corr)); 
-            const pct = (c+1)/2; 
-            if(c>=0){ document.getElementById('corr-fill').style.left = '50%'; document.getElementById('corr-fill').style.width = (pct - 0.5)*100+'%'; document.getElementById('corr-fill').style.background = 'var(--cyan)'; } 
-            else { document.getElementById('corr-fill').style.left = pct*100+'%'; document.getElementById('corr-fill').style.width = (0.5-pct)*100+'%'; document.getElementById('corr-fill').style.background = '#ff5500'; } 
-            document.getElementById('corr-val').textContent = c.toFixed(2); 
-        } 
-
-        function updateAnalyzer(){ 
-            const dpr = Math.min(window.devicePixelRatio||1, 2); 
-            [cvL, cvR].forEach(cv=>{ const rect = cv.getBoundingClientRect(); const W = Math.round(rect.width * dpr); const H = Math.round(rect.height * dpr); if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; } }); 
-            if(analL){ analL.getByteFrequencyData(freqL); analR.getByteFrequencyData(freqR); if(abuf) rebuildBinRanges(actx.sampleRate); } 
-            drawChannel(cvL, cx2L, freqL, smoothL, peakL, peakHoldL, 'peak-l'); drawChannel(cvR, cx2R, freqR, smoothR, peakR, peakHoldR, 'peak-r'); drawCorrelation(); 
-        } 
-
-        const $wc = document.getElementById('wave-canvas'); const ctx2 = $wc.getContext('2d'); let waveArr=null; 
-        function buildWave(buf){ 
-            const ch = buf.getChannelData(0); const N = 500, step = Math.floor(ch.length/N); waveArr = new Float32Array(N); 
-            for(let i=0;i<N;i++){ let mx=0; for(let j=0;j<step;j++) mx = Math.max(mx,Math.abs(ch[i*step+j])); waveArr[i] = mx; } drawWave(); 
-        } 
-
-        function drawWave(){ 
-            const W = $wc.width, H = $wc.height; ctx2.clearRect(0,0,W,H); ctx2.fillStyle = '#090909'; ctx2.fillRect(0,0,W,H); 
-            if(!waveArr) return; const bw = W/waveArr.length; ctx2.fillStyle = '#2c2c2c'; 
-            for(let i=0;i<waveArr.length;i++){ const a = waveArr[i]*H*0.44; ctx2.fillRect(i*bw, H/2-a, Math.max(1,bw-0.5), a*2); } 
-        } 
-
-        function drawHead(){ 
-            if(!waveArr||trackDur===0) return; drawWave(); const W = $wc.width, H = $wc.height; const x = (head/trackDur)*W; 
-            ctx2.fillStyle = 'rgba(255,85,0,0.15)'; ctx2.fillRect(0,0,x,H); ctx2.fillStyle = 'rgba(255,85,0,0.3)'; 
-            for(let i=0;i<Math.floor(x/($wc.width/waveArr.length));i++){ const bw = $wc.width/waveArr.length; const a = waveArr[i]*H*0.44; ctx2.fillRect(i*bw,H/2-a,Math.max(1,bw-0.5),a*2); } 
-            ctx2.fillStyle = '#ff5500'; ctx2.fillRect(x-1,0,2,H); 
-        } 
-
-        $wc.addEventListener('click',e=>{ 
-            if(!abuf) return; initCtx(); const r = $wc.getBoundingClientRect(); head = Math.max(0,Math.min(trackDur,(e.clientX-r.left)/r.width*trackDur)); 
-            if(isPlaying){ stopFwd(); stopRev(); startFwd(head, isFree?Math.max(0.01,freeSpeed):Math.max(0.01,motorSpeed)); } 
-            odoSet(head); drawHead(); 
-        }); 
-
-        const $dz = document.getElementById('drop-zone'); const $fi = document.getElementById('file-input'); const $tn = document.getElementById('tname'); const $dzt = document.getElementById('dzt'); 
-        $dz.addEventListener('click',()=>$fi.click()); 
-        $fi.addEventListener('change',e=>{ if(e.target.files[0]) loadAudio(e.target.files[0]); }); 
+        const $wsvg = document.getElementById('wheel-svg');
+        const $wo = document.getElementById('wheel-outer');
+        const $wstatus = document.getElementById('wheel-status');
+        const $smsg = document.getElementById('smsg');
+        const $smode = document.getElementById('smode');
+        const $tname = document.getElementById('tname');
+        const $dz = document.getElementById('drop-zone');
+        const $dzt = document.getElementById('dzt');
+        const $fi = document.getElementById('file-input');
         
-        $dz.addEventListener('dragover',e=>{ e.preventDefault(); $dz.classList.add('over'); }); 
-        $dz.addEventListener('dragleave',()=>$dz.classList.remove('over')); 
-        $dz.addEventListener('drop',e=>{ e.preventDefault(); $dz.classList.remove('over'); if(e.dataTransfer.files[0]) loadAudio(e.dataTransfer.files[0]); }); 
+        const $wc = document.getElementById('wave-canvas');
+        const ctx2 = $wc.getContext('2d');
+        const $sfill = document.getElementById('spd-fill');
+        const $sval = document.getElementById('spd-val');
 
-        function loadAudio(file){ 
-            if(!file.type.startsWith('audio/')&&!file.name.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i)){ setStatus('INVALID FORMAT'); return; } 
-            initCtx(); isPlaying=false; isFree=false; head=0; stopFwd(); stopRev(); abuf=null; waveArr=null; trackDur=0; updateBtns(); drawWave(); odoSet(0); 
-            const name = file.name.replace(/\.[^/.]+$/,'').toUpperCase().slice(0,40); $tn.textContent = name; $dzt.textContent = 'LOADING TAPE...'; setStatus('DECODING AUDIO...'); 
-            const fr = new FileReader(); 
-            fr.onload = ev=>{ 
-                actx.decodeAudioData(ev.target.result.slice(0), buf=>{ abuf=buf; trackDur=buf.duration; $dz.classList.add('loaded'); $dzt.textContent='TAPE READY'; buildWave(buf); setStatus('READY'); updateBtns(); }, ()=>{ setStatus('DECODE ERROR'); }); 
-            }; fr.readAsArrayBuffer(file); 
-        } 
+        const cvsL = document.getElementById('canvas-l');
+        const cvsR = document.getElementById('canvas-r');
+        const ctxL = cvsL.getContext('2d');
+        const ctxR = cvsR.getContext('2d');
 
-        odoSet(0); updateSpdBar(); updateBtns(); setStatus('STANDBY · LOAD TAPE'); 
-    })(); 
-    </script> 
-</body> 
+        const $bplay = document.getElementById('btn-play');
+        const $bpause = document.getElementById('btn-pause');
+        const $bffwd = document.getElementById('btn-ffwd');
+        const $brew = document.getElementById('btn-rew');
+        const $bfree = document.getElementById('btn-free');
+
+        function setStatus(msg) {
+            $smsg.textContent = msg;
+        }
+
+        $dz.addEventListener('click', () => {
+            initAudioContextOnGesture();
+            $fi.click();
+        });
+        
+        $fi.addEventListener('change', e => { 
+            if (e.target.files[0]) loadAudio(e.target.files[0]); 
+        });
+
+        $dz.addEventListener('dragover', e => { e.preventDefault(); $dz.classList.add('over'); });
+        $dz.addEventListener('dragleave', () => $dz.classList.remove('over'));
+        $dz.addEventListener('drop', e => { 
+            e.preventDefault(); 
+            $dz.classList.remove('over'); 
+            initAudioContextOnGesture();
+            if (e.dataTransfer.files[0]) loadAudio(e.dataTransfer.files[0]); 
+        });
+
+        async function loadAudio(file) {
+            if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i)) {
+                setStatus('INVALID FORMAT'); return;
+            }
+            isPlaying = false;
+            isFreeSpinMode = false;
+            sampleFrameOffset = 0;
+            audioBuffer = null;
+            waveArr = null;
+            baseSpeed = 1.0;
+            targetPlaybackRate = 0.0;
+            updateButtonsUI();
+            
+            const name = file.name.replace(/\.[^/.]+$/, '').toUpperCase().slice(0, 40);
+            $tname.textContent = name;
+            $dzt.textContent = 'LOADING TAPE...';
+            setStatus('DECODING AUDIO...');
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                leftChannelData = audioBuffer.getChannelData(0);
+                rightChannelData = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : leftChannelData;
+                totalSamples = leftChannelData.length;
+                
+                generateWaveformArray();
+                $dz.classList.add('loaded');
+                $dzt.textContent = 'TAPE LOADED';
+                
+                initAudioEngine();
+                
+                isPlaying = false;
+                targetPlaybackRate = 0.0;
+                updateButtonsUI();
+                setStatus("READY");
+            } catch (err) {
+                setStatus('DECODE FAILED');
+                $dzt.textContent = 'ERR';
+            }
+        }
+
+        function generateWaveformArray() {
+            const steps = 140;
+            waveArr = new Float32Array(steps);
+            const chunkSize = Math.floor(totalSamples / steps);
+            for (let i = 0; i < steps; i++) {
+                let max = 0;
+                const start = i * chunkSize;
+                for (let j = 0; j < chunkSize; j += 10) {
+                    const val = Math.abs(leftChannelData[start + j] || 0);
+                    if (val > max) max = val;
+                }
+                waveArr[i] = max;
+            }
+        }
+
+        function initAudioContextOnGesture() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+
+        function initAudioEngine() {
+            initAudioContextOnGesture();
+            if (scriptNode) scriptNode.disconnect();
+
+            analL = audioContext.createAnalyser(); analL.fftSize = FFT_SIZE; analL.smoothingTimeConstant = 0.2;
+            analR = audioContext.createAnalyser(); analR.fftSize = FFT_SIZE; analR.smoothingTimeConstant = 0.2;
+
+            const splitter = audioContext.createChannelSplitter(2);
+            const merger = audioContext.createChannelMerger(2);
+
+            scriptNode = audioContext.createScriptProcessor(256, 2, 2);
+            scriptNode.onaudioprocess = (e) => {
+                const outL = e.outputBuffer.getChannelData(0);
+                const outR = e.outputBuffer.getChannelData(1);
+                const n = outL.length;
+
+                if (!audioBuffer) {
+                    for (let i = 0; i < n; i++) { outL[i] = 0; outR[i] = 0; }
+                    return;
+                }
+
+                for (let i = 0; i < n; i++) {
+                    if (sampleFrameOffset < 0) sampleFrameOffset = 0;
+                    if (sampleFrameOffset >= totalSamples - 1) sampleFrameOffset = totalSamples - 1;
+
+                    let fi = Math.floor(sampleFrameOffset);
+                    outL[i] = leftChannelData[fi];
+                    outR[i] = rightChannelData[fi];
+
+                    if (sampleFrameOffset >= 0 && sampleFrameOffset < totalSamples - 1) {
+                        sampleFrameOffset += currentPlaybackRate;
+                    }
+                }
+            };
+
+            scriptNode.connect(splitter);
+            splitter.connect(analL, 0);
+            splitter.connect(analR, 1);
+            analL.connect(merger, 0, 0);
+            analR.connect(merger, 0, 1);
+            merger.connect(audioContext.destination);
+        }
+
+        function animationLoop(now) {
+            const deltaTime = (now - lastAnimationFrameTime) / 1000;
+            lastAnimationFrameTime = now;
+
+            if (!isInteracting) {
+                currentPlaybackRate += (targetPlaybackRate - currentPlaybackRate) * 0.15;
+            }
+
+            if (audioBuffer) {
+                if (sampleFrameOffset <= 0 && currentPlaybackRate < 0) currentPlaybackRate = 0;
+                if (sampleFrameOffset >= totalSamples - 1 && currentPlaybackRate > 0) currentPlaybackRate = 0;
+
+                const currentSeconds = sampleFrameOffset / audioContext.sampleRate;
+                odoSet(currentSeconds);
+                drawTimelineWaveform();
+            }
+
+            updateSpeedDisplay();
+
+            if (!isInteracting) {
+                if (isFreeSpinMode) {
+                    wheelRotation += 0;
+                } else {
+                    const rpm33 = (2 * Math.PI * 33.333) / 60;
+                    wheelRotation += rpm33 * currentPlaybackRate * deltaTime;
+                }
+            }
+
+            $wsvg.style.transform = `rotate(${wheelRotation}rad)`;
+            updateModesText();
+
+            renderStereoAnalyzers();
+            requestAnimationFrame(animationLoop);
+        }
+        requestAnimationFrame(animationLoop);
+
+        function updateSpeedDisplay() {
+            const displayRate = currentPlaybackRate;
+            let percent = ((displayRate + 5) / 10) * 100;
+            percent = Math.max(0, Math.min(100, percent));
+            $sfill.style.width = `${percent}%`;
+            $sval.textContent = `${Math.abs(displayRate).toFixed(2)}×${displayRate < 0 ? ' R' : ''}`;
+        }
+
+        function drawTimelineWaveform() {
+            const W = $wc.width, H = $wc.height; 
+            ctx2.fillStyle = '#090909'; ctx2.fillRect(0, 0, W, H); 
+            if (!waveArr) return;
+
+            const bw = W / waveArr.length;
+            ctx2.fillStyle = '#2c2c2c';
+            for (let i = 0; i < waveArr.length; i++) {
+                const h = waveArr[i] * H * 0.8;
+                ctx2.fillRect(i * bw, (H - h) / 2, bw - 1, h);
+            }
+
+            const progress = sampleFrameOffset / totalSamples;
+            ctx2.fillStyle = 'var(--accent)';
+            ctx2.fillRect(progress * W, 0, 2, H);
+        }
+
+        function renderStereoAnalyzers() {
+            const fL = new Uint8Array(FFT_SIZE / 2);
+            const fR = new Uint8Array(FFT_SIZE / 2);
+            
+            if (analL && analR && audioBuffer && Math.abs(currentPlaybackRate) > 0.01) {
+                analL.getByteFrequencyData(fL);
+                analR.getByteFrequencyData(fR);
+            }
+
+            processChannelMatrix(cvsL, ctxL, fL, smoothL, peakL, holdL, 'peak-l');
+            processChannelMatrix(cvsR, ctxR, fR, smoothR, peakR, holdR, 'peak-r');
+            updateCorrelationField(fL, fR);
+        }
+
+        function processChannelMatrix(canvas, ctx, data, smooth, peaks, holds, peakId) {
+            const W = canvas.width, H = canvas.height;
+            ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H);
+            ctx.strokeStyle = '#151515'; ctx.lineWidth = 1;
+
+            for (let t = 0.25; t <= 1; t += 0.25) {
+                const y = Math.round(t * (H - 1)) + 0.5;
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+            }
+
+            let highestSum = 0;
+            for (let i = 0; i < NUM_BARS; i++) {
+                const rawVal = (data[i] || 0) / 255;
+                highestSum = Math.max(highestSum, rawVal);
+
+                if (rawVal > smooth[i]) smooth[i] = smooth[i] * 0.4 + rawVal * 0.6;
+                else smooth[i] = smooth[i] * 0.85 + rawVal * 0.15;
+
+                if (smooth[i] >= peaks[i]) {
+                    peaks[i] = smooth[i];
+                    holds[i] = 15;
+                } else {
+                    if (holds[i] > 0) holds[i]--;
+                    else peaks[i] = Math.max(0, peaks[i] - 0.015);
+                }
+            }
+
+            const dbVal = highestSum > 0 ? Math.round(20 * Math.log10(highestSum)) : -60;
+            document.getElementById(peakId).textContent = dbVal <= -48 ? '-∞' : `${dbVal} DB`;
+
+            const barW = W / NUM_BARS;
+            const drawW = barW - Math.max(1, barW * 0.18);
+
+            for (let i = 0; i < NUM_BARS; i++) {
+                const amp = smooth[i];
+                if (amp < 0.01) continue;
+                
+                const x = i * barW;
+                const yAmount = amp * H;
+                
+                let r = Math.round(amp * 255);
+                let g = Math.round(238 * (1 - amp));
+                ctx.fillStyle = `rgb(${r},${Math.max(0, g)},0)`;
+                ctx.fillRect(x, H - yAmount, drawW, yAmount);
+
+                const pY = H - peaks[i] * H;
+                ctx.fillStyle = 'var(--cyan)';
+                ctx.fillRect(x, Math.max(0, pY - 1), drawW, 1);
+            }
+        }
+
+        function updateCorrelationField(fL, fR) {
+            let dotProduct = 0, normL = 0, normR = 0;
+            for (let i = 0; i < fL.length; i++) {
+                const l = fL[i] / 255, r = fR[i] / 255;
+                dotProduct += l * r;
+                normL += l * l;
+                normR += r * r;
+            }
+            let corr = 0.0;
+            if (normL > 0 && normR > 0) corr = dotProduct / (Math.sqrt(normL) * Math.sqrt(normR));
+            if (isNaN(corr)) corr = 0;
+
+            const finalCorr = (corr * 0.6) + 0.4;
+            const $cfill = document.getElementById('corr-fill');
+            const $cval = document.getElementById('corr-val');
+            
+            $cfill.style.left = `${Math.max(0, (finalCorr + 1) * 50 - 10)}%`;
+            $cfill.style.width = '14px';
+            $cval.textContent = finalCorr.toFixed(2);
+        }
+
+        function updateButtonsUI() {
+            $bplay.classList.remove('on');
+            $bpause.classList.remove('on');
+            $bffwd.classList.remove('on');
+            $brew.classList.remove('on');
+            $bfree.classList.remove('on','lit');
+            
+            if (isFreeSpinMode) {
+                $bfree.classList.add('on','lit');
+            }
+            
+            if (!isPlaying) {
+                $bpause.classList.add('on');
+            } else if (targetPlaybackRate === baseSpeed && isPlaying) {
+                $bplay.classList.add('on');
+            } else if (targetPlaybackRate === 3.0) {
+                $bffwd.classList.add('on');
+            } else if (targetPlaybackRate === -3.0) {
+                $brew.classList.add('on');
+            }
+        }
+
+        function updateModesText() {
+            if (!audioBuffer) {
+                $smode.textContent = 'OFFLINE';
+                $wstatus.textContent = 'NO TAPE';
+                return;
+            }
+            if (isFreeSpinMode) {
+                $smode.textContent = `FREE · ${baseSpeed.toFixed(2)}×`;
+                $wstatus.textContent = 'FREE SPIN MODE';
+            } else if (!isPlaying) {
+                $smode.textContent = 'STOPPED';
+                $wstatus.textContent = 'MOTOR STOPPED';
+            } else {
+                $smode.textContent = `PLAY · ${targetPlaybackRate.toFixed(2)}×`;
+                $wstatus.textContent = 'MOTOR RUNNING';
+            }
+        }
+
+        $bplay.addEventListener('click', () => {
+            initAudioContextOnGesture();
+            if (!audioBuffer) { setStatus("LOAD TAPE TO BEGIN"); return; }
+            isFreeSpinMode = false;
+            
+            if (targetPlaybackRate === baseSpeed && isPlaying) {
+                targetPlaybackRate = 0.0;
+                isPlaying = false;
+                setStatus("LATCHED STOP");
+            } else {
+                targetPlaybackRate = baseSpeed; 
+                isPlaying = true;
+                setStatus("PLAY STABLE");
+            }
+            updateButtonsUI(); 
+        });
+
+        $bpause.addEventListener('click', () => {
+            initAudioContextOnGesture();
+            if (!audioBuffer) return;
+            isFreeSpinMode = false;
+            targetPlaybackRate = 0.0;
+            isPlaying = false;
+            updateButtonsUI(); 
+            setStatus("LATCHED STOP");
+        });
+
+        $bffwd.addEventListener('click', () => {
+            initAudioContextOnGesture();
+            if (!audioBuffer) { setStatus("LOAD TAPE TO BEGIN"); return; }
+            isFreeSpinMode = false;
+            
+            if (targetPlaybackRate === 3.0 && isPlaying) {
+                targetPlaybackRate = baseSpeed;
+                setStatus("PLAY STABLE");
+            } else {
+                targetPlaybackRate = 3.0;
+                isPlaying = true;
+                setStatus("FAST FORWARD");
+            }
+            updateButtonsUI(); 
+        });
+
+        $brew.addEventListener('click', () => {
+            initAudioContextOnGesture();
+            if (!audioBuffer) { setStatus("LOAD TAPE TO BEGIN"); return; }
+            isFreeSpinMode = false;
+            
+            if (targetPlaybackRate === -3.0 && isPlaying) {
+                targetPlaybackRate = baseSpeed;
+                setStatus("PLAY STABLE");
+            } else {
+                targetPlaybackRate = -3.0;
+                isPlaying = true;
+                setStatus("REWINDING");
+            }
+            updateButtonsUI(); 
+        });
+
+        $bfree.addEventListener('click', () => {
+            initAudioContextOnGesture();
+            if (!audioBuffer) { setStatus("LOAD TAPE TO BEGIN"); return; }
+            isFreeSpinMode = !isFreeSpinMode;
+            
+            if (isFreeSpinMode) {
+                isPlaying = true;
+                targetPlaybackRate = baseSpeed;
+                setStatus("FREE SPIN ACTIVE");
+            } else {
+                targetPlaybackRate = isPlaying ? baseSpeed : 0.0;
+                setStatus("FREE SPIN DISABLED");
+            }
+            updateButtonsUI();
+        });
+
+        // Touch & Wheel Logic
+        function getAngle(e) {
+            const rect = $wo.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return Math.atan2(clientY - centerY, clientX - centerX);
+        }
+
+        function handleStart(e) {
+            e.preventDefault(); 
+            initAudioContextOnGesture();
+            if (!audioBuffer) return;
+            isInteracting = true;
+            lastAngle = getAngle(e);
+            lastTouchTime = performance.now();
+            $wo.classList.add('active');
+        }
+
+        function handleMove(e) {
+            if (!isInteracting || !audioBuffer) return;
+            e.preventDefault();
+
+            const currentAngle = getAngle(e);
+            const now = performance.now();
+            let deltaTime = (now - lastTouchTime) / 1000;
+            if (deltaTime <= 0) deltaTime = 0.001;
+
+            let angleDiff = currentAngle - lastAngle;
+            if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+            wheelRotation += angleDiff;
+
+            if (isFreeSpinMode) {
+                baseSpeed += angleDiff * 0.15;
+                baseSpeed = Math.max(-5.0, Math.min(5.0, baseSpeed));
+                targetPlaybackRate = baseSpeed;
+                currentPlaybackRate = baseSpeed; 
+                setStatus(`DIALING SPEED: ${currentPlaybackRate.toFixed(2)}x`);
+            } else {
+                const normalOmega = (2 * Math.PI * 33.333) / 60;
+                let scratchRate = angleDiff / (deltaTime * normalOmega);
+                currentPlaybackRate = Math.max(-5.0, Math.min(5.0, scratchRate));
+                
+                let prospectiveOffset = sampleFrameOffset + (angleDiff * audioContext.sampleRate * 0.12);
+                sampleFrameOffset = Math.max(0, Math.min(totalSamples - 1, prospectiveOffset));
+                
+                setStatus(`SCRATCHING: ${currentPlaybackRate.toFixed(2)}x`);
+            }
+
+            lastAngle = currentAngle;
+            lastTouchTime = now;
+        }
+
+        function handleEnd() {
+            if (!isInteracting) return;
+            isInteracting = false;
+            $wo.classList.remove('active');
+            
+            if (isFreeSpinMode) {
+                targetPlaybackRate = baseSpeed;
+                setStatus("FREE SPIN ACTIVE");
+            } else {
+                targetPlaybackRate = isPlaying ? baseSpeed : 0.0;
+                setStatus(isPlaying ? "PLAY STABLE" : "LATCHED STOP");
+            }
+        }
+
+        $wo.addEventListener('touchstart', handleStart, { passive: false });
+        window.addEventListener('touchmove', handleMove, { passive: false });
+        window.addEventListener('touchend', handleEnd);
+        
+        $wo.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+        
+        updateButtonsUI();
+    })();
+    </script>
+</body>
 </html>
